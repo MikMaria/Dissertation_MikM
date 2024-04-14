@@ -236,7 +236,7 @@ class Reconstruction_of_watershades(object):
         # 1.2. заполнение "дыр" в ЦМР
         DEM_fill = arcpy.sa.Fill(DEM_input)
         # 1.3. создание растра направлений стока
-        flow_directions = arcpy.sa.FlowDirection(DEM_fill, "NORMAL", slope_degree)
+        flow_directions = arcpy.sa.FlowDirection(DEM_fill, "NORMAL", 'slope_degree')
         # 1.4. объединение участков выбранного водотока в единую линию (dissolve_stream - единая линия)
         arcpy.Dissolve_management(select_watercourses, "dissolve_stream", "", "", "MULTI_PART", "UNSPLIT_LINES")
         # 1.5. извлечение вершин из единой линии и дальнейший их подсчет (необходимо для того, чтобы установить границу возможного агрегирования)
@@ -265,212 +265,196 @@ class Reconstruction_of_watershades(object):
         values_input = [i[0] for i in arcpy.da.SearchCursor('out_point', "RASTERVALU")]
         # 2.4. подготовка к циклу прохода по каждому элементу списка values
         boolval = True
-        slope_treshold = [19, 24]
+        slope_treshold = [20]
         k = 1
         # 2.5. поиск точки перегиба 
         for s in slope_treshold:
             arcpy.AddMessage('slope: %s degree' % s)
-            # k = 1
+            k = 1
             
-            # while True:
-            #     # 2.5.1. создание двух списков из единого (в один записываются индексы всех точек, у которых значение угла наклона больше 20 градсов, в другой - меньше 20)
-            #     points_upper = [values_input.index(i) for i in values_input if i > s]
-            #     points_below = [values_input.index(i) for i in values_input if i <= s]
-            #     # 2.5.2. если индексы начала и конца двух списков совпадают, то существует только одна точка перегиба - искомая точка 
-            #     if (points_below[0] == points_upper[-1]):
-            #         boolval = False
-            #         query_point_end_1 = '"OBJECTID" = {0}'.format(points_below[0])
-            #         if s == 20:
-            #             arcpy.MakeFeatureLayer_management('out_point', "point_zone_20", query_point_end_1)
-            #             arcpy.AddMessage('Slope 20 ok')
-            #         else:
-            #             arcpy.MakeFeatureLayer_management('out_point', "point_zone_25", query_point_end_1)
-            #             arcpy.AddMessage('Slope 25 ok')
+            while True:
+                # 2.5.1. создание двух списков из единого (в один записываются индексы всех точек, у которых значение угла наклона больше 20 градсов, в другой - меньше 20)
+                points_upper = [values_input.index(i) for i in values_input if i > s]
+                points_below = [values_input.index(i) for i in values_input if i <= s]
+                # 2.5.2. если индексы начала и конца двух списков совпадают, то существует только одна точка перегиба - искомая точка 
+                if (points_below[0] == points_upper[-1]):
+                    boolval = False
+                    query_point_end_1 = '"OBJECTID" = {0}'.format(points_below[0])
+                    if s == 20:
+                        arcpy.MakeFeatureLayer_management('out_point', "point_zone_20", query_point_end_1)
+                        arcpy.AddMessage('Slope 20 ok')
+                    else:
+                        arcpy.MakeFeatureLayer_management('out_point', "point_zone_25", query_point_end_1)
+                        arcpy.AddMessage('Slope 25 ok')
                     
-            #     # 2.5.3. агрегирование исходной ЦМР
-            #     else:
-            #         # 2.5.3.1. подготовка к агрегированию
-            #         k = int(k+1)
-            #         arcpy.AddMessage('iteration: %s' % k)
-            #         cell_agg = cell_p*k 
-            #         # 2.5.3.2. удаление переменных, полученных на прошлом этапе итерации (ИСПРАВИТЬ И ДОБАВИТЬ)
-            #         del values_input[:]
-
-            #         # 2.5.3.3. агрегирование исходной ЦМР 
-            #         DEM_agg = arcpy.sa.Aggregate(DEM_fill, k, "MEAN")
-            #         # 2.5.3.4. построение углов наклона по исходной цмр
-            #         slope_degree_agg = arcpy.sa.Slope(DEM_agg, "DEGREE")
-            #         # 2.5.3.5. копирование изначальной линии и ее загущение во столько же раз во сколько агрегируется ЦМР
-            #         dens_copy_k = 'dens_copy_%s' %k
-            #         arcpy.management.Copy('dissolve_stream', "dens_copy_k")
-            #         arcpy.edit.Densify('dens_copy_k', "DISTANCE", cell_agg)
-            #         # 2.5.3.6. извлечение вершин из уплотненной линии и присвоение им значений с растра углов наклона, полученног по агрегированной ЦМР
-            #         arcpy.management.FeatureVerticesToPoints('dens_copy_k', "intersect_point_agg", "ALL")
-            #         arcpy.sa.ExtractValuesToPoints('intersect_point_agg', slope_degree_agg, "out_point_agg")
-            #         # 2.5.3.7. создание списка для следующей итерации и проверка его длины (количество элементов не должно быть меньше исходного количества точек в линии)
-            #         values_input = [i[0] for i in arcpy.da.SearchCursor('out_point_agg', "RASTERVALU")]
-            #         values_len = int(len(values_input))
-            #         arcpy.Delete_management(DEM_agg)
-            #         arcpy.Delete_management(dens_copy_k)
-            #         arcpy.Delete_management(slope_degree_agg)
-            #         arcpy.Delete_management('intersect_point_agg')
-            #         # 2.5.4. обработка результатов агрегирования
-            #         # 2.5.4.1. в результате агрегирования получаем два массива. В одном ищем первую точку, в другом последнюю
-            #         if values_len == count_vertex:
-            #             query_below = '"OBJECTID" = {0}'.format(points_below[0])
-            #             query_upper = '"OBJECTID" = {0}'.format(points_upper[-1])
-            #             # 2.5.4.2. из выбранных точек создаем временные слои
-            #             arcpy.MakeFeatureLayer_management('out_point_agg', "below_point", query_below)
-            #             arcpy.MakeFeatureLayer_management('out_point_agg', "upper_point", query_upper)
-            #             arcpy.Delete_management('out_point_agg')
-            #             # 2.5.4.3. объединяем два слоя точек в один
-            #             merge_list = ['below_point', 'upper_point']
-            #             arcpy.Merge_management(merge_list, "point_select_1")
-            #             # 2.5.4.4. по выбранным точкам разрезаем исходную линию
-            #             arcpy.management.SplitLineAtPoint('dissolve_stream', 'point_select_1', "split_lines_3", "5 Meters")                    
-            #             # 2.5.4.5. выбор одной линии из трех (той, у которой присутствуют углы наклона и больше 20 градусов и меньше 20) и запись ее на новый слой
-            #             with arcpy.da.SearchCursor('dissolve_stream', 'SHAPE@') as cursor:
-            #                 for row in cursor:
-            #                     coords_start = tuple((row[0].firstPoint.X, row[0].firstPoint.Y))
-            #                     coords_end = tuple((row[0].lastPoint.X, row[0].lastPoint.Y))
-            #                     break
-            #             objval = 0
-            #             with arcpy.da.SearchCursor('split_lines_3', ['SHAPE@', 'OID@']) as cursor:
-            #                 for row in cursor:
-            #                     split_start = tuple((row[0].firstPoint.X, row[0].firstPoint.Y))
-            #                     split_end = tuple((row[0].lastPoint.X, row[0].lastPoint.Y))
-            #                     if (coords_start != split_start and coords_end != split_end):
-            #                         objval = row[1]
-            #                         break
-            #             query_line = '"OBJECTID" = {0}'.format(objval)
-            arcpy.MakeFeatureLayer_management('dens_copy', "select_line")
-            #             # 2.5.5.обработка выбранной линии
-            #             arcpy.AddMessage('Select line ok')
-            # 2.5.5.1. добавление атрибута геометрии (длины)
-            arcpy.management.AddGeometryAttributes('select_line', "LENGTH","METERS")
-            values_len_line = [i[0] for i in arcpy.da.SearchCursor('select_line', "LENGTH")]
-            value_len_line = values_len_line[0]
-            # 2.5.5.2. уплотнение вершин линии до размера ячейки исходной цмр
-            arcpy.edit.Densify('select_line', "DISTANCE", cell_p)
-            arcpy.management.FeatureVerticesToPoints('select_line', "point_select_line", "ALL")
-            # 2.5.5.3. извлечение значений углов наклона в каждой точке
-            arcpy.sa.ExtractValuesToPoints('point_select_line', slope_degree, "select_point_value_slope")
-            values_slope = [i[0] for i in arcpy.da.SearchCursor('select_point_value_slope', "RASTERVALU")]
-            # 2.5.5.4. создание списка вершин, в которых значение угла наклона больше 20 градусов
-            points_max = [values_slope.index(i) for i in values_slope if i > s]
-            point_list = []
-            # 2.5.5.4. выбор и добавление в список точек перегиба (перехода между 20 градусами)
-            for i in range(len(points_max)):
-                query_len_slope = '"OBJECTID" = {0}'.format(points_max[i])
-                point_extr = 'point_%s_extr' % (i+1)
-                arcpy.MakeFeatureLayer_management('select_point_value_slope', point_extr, query_len_slope)
-                point_list.append(point_extr)
-            # 2.5.5.5. объединение точек перегиба
-            arcpy.Merge_management(point_list, "point_20_ext")
-            # 2.5.5.6. разрезание выбранной линии по точкам перегиба (в результате много коротких линий с углом больше 20 и есть длинные линии с углом меньше 20)
-            arcpy.management.SplitLineAtPoint('select_line', 'point_20_ext', "line_20_ext", "1 Meters")
-            arcpy.management.AddGeometryAttributes('line_20_ext', "LENGTH","METERS")
-            # 2.5.5.7. сортировка по длине (сначала будут линии с углом меньше 20 градусов)
-            arcpy.management.Sort('line_20_ext', "line_20_ext_sort", [["LENGTH", "DESCENDING"]])
-            values_slope_max = [i[0] for i in arcpy.da.SearchCursor('line_20_ext_sort', "LENGTH")]
-            value_slope_max = values_slope_max[0]
-            percent_line_20 = value_slope_max*100/value_len_line
-            # 2.5.5.7. если длина первой линии (которая меньше 20 градусов) составляет 10 процентов или более от исходной (выбранной) линии, то ее начало считается точкой перегиба
-            if percent_line_20 >= 10:
-                query_line_20 = '"OBJECTID" = 1'
-                arcpy.MakeFeatureLayer_management('line_20_ext_sort', "line_20_min", query_line_20)
-                arcpy.FeatureVerticesToPoints_management('line_20_min', "point_20_start_end", "BOTH_ENDS")
-                arcpy.sa.ExtractValuesToPoints('point_20_start_end', DEM_fill, "point_20_start_end_height")
-                arcpy.management.Sort('point_20_start_end_height', "point_20_start_end_height_sort", [["RASTERVALU", "DESCENDING"]])
-                query_point_20 = '"OBJECTID" = 1'
-                if s == 20:
-                    arcpy.MakeFeatureLayer_management('select_point_value_slope', "point_zone_20", query_point_20)
-                    arcpy.AddMessage('Slope 20 ok')
+                # 2.5.3. агрегирование исходной ЦМР
                 else:
-                    arcpy.MakeFeatureLayer_management('select_point_value_slope', "point_zone_25", query_point_20)
-                    arcpy.AddMessage('Slope 25 ok')
-            # 2.5.5.8. если нет четкого разделения по длине, то реализуется следующий цикл
-            else:
-                # 2.5.5.8.1. добавление координат к каждой вершине выбранной линии
-                arcpy.management.AddGeometryAttributes('point_select_line', "POINT_X_Y_Z_M","METERS")
-                arcpy.sa.ExtractValuesToPoints('point_select_line', DEM_fill, "select_point_value")
-                flds = ['POINT_X', 'POINT_Y', 'RASTERVALU']
-                # 2.5.5.8.2. создание списков для каждой координаты
-                px = [i[0] for i in arcpy.da.SearchCursor('select_point_value', "POINT_X")][0]
-                py = [i[0] for i in arcpy.da.SearchCursor('select_point_value', "POINT_Y")][0]
-                pz = [i[0] for i in arcpy.da.SearchCursor('select_point_value', "RASTERVALU")][0]
-                angle = []
-                cnt = 0
-                with arcpy.da.SearchCursor('select_point_value', flds) as cursor:
-                    for i in cursor:
-                        # 2.5.5.8.3. проход по каждой точке (за исключением первой и второй от вершины)
-                        if cnt >= 2:
-                            # 2.5.5.8.4. извлечение двух точек - первой и итерируемой
-                            selection_query = '"OBJECTID" = {0} OR "OBJECTID" = {1}'.format(0, cnt)
-                            # 2.5.5.8.5. добавление точек на новый слой
-                            arcpy.MakeFeatureLayer_management('select_point_value', "current_points", selection_query)
-                            # 2.5.5.8.6. разрезание линии по двум точкам
-                            arcpy.management.SplitLineAtPoint('select_line', 'current_points', "splitted_fclass", "1 Meters")
-                            line_length = 0
-                            # 2.5.5.8.7. поиск тангенса угла между двумя точками
-                            for row in arcpy.da.SearchCursor('splitted_fclass', ["SHAPE@", "SHAPE@LENGTH"]):
-                                if (row[0].firstPoint.X == px and row[0].firstPoint.Y == py):
-                                    line_length = row[1]                                    
+                    # 2.5.3.1. подготовка к агрегированию
+                    k = int(k+1)
+                    arcpy.AddMessage('iteration: %s' % k)
+                    cell_agg = cell_p*k
+                    # 2.5.3.2. удаление переменных, полученных на прошлом этапе итерации (ИСПРАВИТЬ И ДОБАВИТЬ)
+                    del values_input[:]
+                    arcpy.Delete_management('DEM_agg')
+                    arcpy.Delete_management('dens_copy_k')
+                    arcpy.Delete_management('slope_degree_agg')
+                    arcpy.Delete_management('intersect_point_agg')
+                    arcpy.Delete_management('out_point_agg')
+                    # 2.5.3.3. агрегирование исходной ЦМР 
+                    DEM_agg = arcpy.sa.Aggregate(DEM_fill, k, "MEAN")
+                    # 2.5.3.4. построение углов наклона по исходной цмр
+                    slope_degree_agg = arcpy.sa.Slope(DEM_agg, "DEGREE")
+                    # 2.5.3.5. копирование изначальной линии и ее загущение во столько же раз во сколько агрегируется ЦМР
+                    dens_copy_k = 'dens_copy_%s' %k
+                    arcpy.management.Copy('dissolve_stream', "dens_copy_k")
+                    arcpy.edit.Densify('dens_copy_k', "DISTANCE", cell_agg)
+                    # 2.5.3.6. извлечение вершин из уплотненной линии и присвоение им значений с растра углов наклона, полученног по агрегированной ЦМР
+                    arcpy.management.FeatureVerticesToPoints('dens_copy_k', "intersect_point_agg", "ALL")
+                    arcpy.sa.ExtractValuesToPoints('intersect_point_agg', slope_degree_agg, "out_point_agg")
+                    # 2.5.3.7. создание списка для следующей итерации и проверка его длины (количество элементов не должно быть меньше исходного количества точек в линии)
+                    values_input = [i[0] for i in arcpy.da.SearchCursor('out_point_agg', "RASTERVALU")]
+                    values_len = int(len(values_input))
+                    # 2.5.4. обработка результатов агрегирования
+                    # 2.5.4.1. в результате агрегирования получаем два массива. В одном ищем первую точку, в другом последнюю
+                    if values_len == count_vertex:
+                        query_below = '"OBJECTID" = {0}'.format(points_below[0])
+                        query_upper = '"OBJECTID" = {0}'.format(points_upper[-1])
+                        # 2.5.4.2. из выбранных точек создаем временные слои
+                        arcpy.MakeFeatureLayer_management('out_point_agg', "below_point", query_below)
+                        arcpy.MakeFeatureLayer_management('out_point_agg', "upper_point", query_upper)
+                        # 2.5.4.3. объединяем два слоя точек в один
+                        merge_list = ['below_point', 'upper_point']
+                        arcpy.Merge_management(merge_list, "point_select_1")
+                        # 2.5.4.4. по выбранным точкам разрезаем исходную линию
+                        arcpy.management.SplitLineAtPoint('dissolve_stream', 'point_select_1', "split_lines_3", "5 Meters")                    
+                        # 2.5.4.5. выбор одной линии из трех (той, у которой присутствуют углы наклона и больше 20 градусов и меньше 20) и запись ее на новый слой
+                        with arcpy.da.SearchCursor('dissolve_stream', 'SHAPE@') as cursor:
+                            for row in cursor:
+                                coords_start = tuple((row[0].firstPoint.X, row[0].firstPoint.Y))
+                                coords_end = tuple((row[0].lastPoint.X, row[0].lastPoint.Y))
+                                break
+                        objval = 0
+                        with arcpy.da.SearchCursor('split_lines_3', ['SHAPE@', 'OID@']) as cursor:
+                            for row in cursor:
+                                split_start = tuple((row[0].firstPoint.X, row[0].firstPoint.Y))
+                                split_end = tuple((row[0].lastPoint.X, row[0].lastPoint.Y))
+                                if (coords_start != split_start and coords_end != split_end):
+                                    objval = row[1]
                                     break
-                            if (line_length != 0):
-                                tg_A = (pz - i[2]) / line_length
-                                angle.append(math.degrees(math.atan(tg_A)))
-                                arcpy.Delete_management('current_points')
-                                arcpy.Delete_management('splitted_fclass')
+                        query_line = '"OBJECTID" = {0}'.format(objval)
+                        arcpy.MakeFeatureLayer_management('split_lines_3', "select_line", query_line)
+                        # 2.5.5.обработка выбранной линии
+                        arcpy.AddMessage('Select line ok')
+                        # 2.5.5.1. добавление атрибута геометрии (длины)
+                        arcpy.management.AddGeometryAttributes('select_line', "LENGTH","METERS")
+                        values_len_line = [i[0] for i in arcpy.da.SearchCursor('select_line', "LENGTH")]
+                        value_len_line = values_len_line[0]
+                        # 2.5.5.2. уплотнение вершин линии до размера ячейки исходной цмр
+                        arcpy.edit.Densify('select_line', "DISTANCE", cell_p)
+                        arcpy.management.FeatureVerticesToPoints('select_line', "point_select_line", "ALL")
+                        # 2.5.5.3. извлечение значений углов наклона в каждой точке
+                        arcpy.sa.ExtractValuesToPoints('point_select_line', slope_degree, "select_point_value_slope")
+                        values_slope = [i[0] for i in arcpy.da.SearchCursor('select_point_value_slope', "RASTERVALU")]
+                        # 2.5.5.4. создание списка вершин, в которых значение угла наклона больше 20 градусов
+                        points_max = [values_slope.index(i) for i in values_slope if i > s]
+                        point_list = []
+                        # 2.5.5.4. выбор и добавление в список точек перегиба (перехода между 20 градусами)
+                        for i in range(len(points_max)):
+                            query_len_slope = '"OBJECTID" = {0}'.format(points_max[i])
+                            point_extr = 'point_%s_extr' % (i+1)
+                            arcpy.MakeFeatureLayer_management('select_point_value_slope', point_extr, query_len_slope)
+                            point_list.append(point_extr)
+                        # 2.5.5.5. объединение точек перегиба
+                        arcpy.Merge_management(point_list, "point_20_ext")
+                        # 2.5.5.6. разрезание выбранной линии по точкам перегиба (в результате много коротких линий с углом больше 20 и есть длинные линии с углом меньше 20)
+                        arcpy.management.SplitLineAtPoint('select_line', 'point_20_ext', "line_20_ext", "1 Meters")
+                        arcpy.management.AddGeometryAttributes('line_20_ext', "LENGTH","METERS")
+                        # 2.5.5.7. сортировка по длине (сначала будут линии с углом меньше 20 градусов)
+                        arcpy.management.Sort('line_20_ext', "line_20_ext_sort", [["LENGTH", "DESCENDING"]])
+                        values_slope_max = [i[0] for i in arcpy.da.SearchCursor('line_20_ext_sort', "LENGTH")]
+                        value_slope_max = values_slope_max[0]
+                        percent_line_20 = value_slope_max*100/value_len_line
+                        # 2.5.5.7. если длина первой линии (которая меньше 20 градусов) составляет 10 процентов или более от исходной (выбранной) линии, то ее начало считается точкой перегиба
+                        if percent_line_20 >= 10:
+                            query_line_20 = '"OBJECTID" = 1'
+                            arcpy.MakeFeatureLayer_management('line_20_ext_sort', "line_20_min", query_line_20)
+                            arcpy.FeatureVerticesToPoints_management('line_20_min', "point_20_start_end", "BOTH_ENDS")
+                            arcpy.sa.ExtractValuesToPoints('point_20_start_end', DEM_fill, "point_20_start_end_height")
+                            arcpy.management.Sort('point_20_start_end_height', "point_20_start_end_height_sort", [["RASTERVALU", "DESCENDING"]])
+                            query_point_20 = '"OBJECTID" = 1'
+                            if s == 20:
+                                arcpy.MakeFeatureLayer_management('select_point_value_slope', "point_zone_20", query_point_20)
+                                arcpy.AddMessage('Slope 20 ok')
                             else:
-                                arcpy.AddMessage('Zero Division Error')
-                                arcpy.Delete_management('current_points')
-                                arcpy.Delete_management('splitted_fclass')
-                        cnt += 1
-                # 2.5.5.8.8. поиск первой точки, где тангенс угла стал меньше 20 градусов
-                arcpy.AddMessage(angle)
-                point_max = [angle.index(i) for i in angle if i <= s][0]
-                query_len_slope_2 = '"OBJECTID" = {0}'.format(point_max)
-                if s == 20:
-                    arcpy.MakeFeatureLayer_management('select_point_value_slope', "point_zone_20", query_len_slope_2)
-                    arcpy.AddMessage('Slope 20 ok')
-                else:
-                    arcpy.MakeFeatureLayer_management('select_point_value_slope', "point_zone_25", query_len_slope_2)
-                    arcpy.AddMessage('Slope 25 ok')
-            # arcpy.Delete_management('below_point')
-            # arcpy.Delete_management('upper_point')
-            # arcpy.Delete_management('point_select_1')
-            # arcpy.Delete_management('split_lines_3')
-            # arcpy.Delete_management('point_select_line')
-            # arcpy.Delete_management('select_point_value_slope')
-            # arcpy.Delete_management('point_20_ext')
-            # arcpy.Delete_management('line_20_ext')
-            # arcpy.Delete_management('line_20_ext_sort')
-            # arcpy.Delete_management('line_20_min')
-            # arcpy.Delete_management('point_20_start_end')
-            # arcpy.Delete_management('point_20_start_end_height')
-            # arcpy.Delete_management('point_20_start_end_height_sort')
-            # arcpy.Delete_management('select_point_value')
-            # arcpy.Delete_management('current_points')
-            # arcpy.Delete_management('splitted_fclass')                            
+                                arcpy.MakeFeatureLayer_management('select_point_value_slope', "point_zone_25", query_point_20)
+                                arcpy.AddMessage('Slope 25 ok')
+                        # 2.5.5.8. если нет четкого разделения по длине, то реализуется следующий цикл
+                        else:
+                            # 2.5.5.8.1. добавление координат к каждой вершине выбранной линии
+                            arcpy.management.AddGeometryAttributes('point_select_line', "POINT_X_Y_Z_M","METERS")
+                            arcpy.sa.ExtractValuesToPoints('point_select_line', DEM_fill, "select_point_value")
+                            flds = ['POINT_X', 'POINT_Y', 'RASTERVALU']
+                            # 2.5.5.8.2. создание списков для каждой координаты
+                            px = [i[0] for i in arcpy.da.SearchCursor('select_point_value', "POINT_X")][0]
+                            py = [i[0] for i in arcpy.da.SearchCursor('select_point_value', "POINT_Y")][0]
+                            pz = [i[0] for i in arcpy.da.SearchCursor('select_point_value', "RASTERVALU")][0]
+                            angle = []
+                            cnt = 0
+                            with arcpy.da.SearchCursor('select_point_value', flds) as cursor:
+                                for i in cursor:
+                                    # 2.5.5.8.3. проход по каждой точке (за исключением первой и второй от вершины)
+                                    if cnt >= 2:
+                                        # 2.5.5.8.4. извлечение двух точек - первой и итерируемой
+                                        selection_query = '"OBJECTID" = {0} OR "OBJECTID" = {1}'.format(0, cnt)
+                                        # 2.5.5.8.5. добавление точек на новый слой
+                                        arcpy.MakeFeatureLayer_management('select_point_value', 'current_points', selection_query)
+                                        # 2.5.5.8.6. разрезание линии по двум точкам
+                                        arcpy.management.SplitLineAtPoint('select_line', 'current_points', 'splitted_fclass', "1 Meters")
+                                        line_length = 0
+                                        # 2.5.5.8.7. поиск тангенса угла между двумя точками
+                                        for row in arcpy.da.SearchCursor('splitted_fclass', ["SHAPE@", "SHAPE@LENGTH"]):
+                                            if (row[0].firstPoint.X == px and row[0].firstPoint.Y == py):
+                                                line_length = row[1]                                    
+                                                break
+                                        if (line_length != 0):
+                                            tg_A = (pz - i[2]) / line_length
+                                            angle.append(math.degrees(math.atan(tg_A)))
+                                            arcpy.Delete_management('current_points')
+                                            arcpy.Delete_management('splitted_fclass')
+                                        else:
+                                            arcpy.AddMessage('Zero Division Error')
+                                            arcpy.Delete_management('current_points')
+                                            arcpy.Delete_management('splitted_fclass')
+                                    cnt += 1
+                            # 2.5.5.8.8. поиск первой точки, где тангенс угла стал меньше 20 градусов
+                            arcpy.AddMessage(angle)
+                            point_max = [angle.index(i) for i in angle if i <= s][0]
+                            query_len_slope_2 = '"OBJECTID" = {0}'.format(point_max)
+                            if s == 20:
+                                arcpy.MakeFeatureLayer_management('select_point_value_slope', "point_zone_20", query_len_slope_2)
+                                arcpy.AddMessage('Slope 20 ok')
+                            else:
+                                arcpy.MakeFeatureLayer_management('select_point_value_slope', "point_zone_25", query_len_slope_2)
+                                arcpy.AddMessage('Slope 25 ok')
+                            
                         
                         # 2.5.5.8.9. разрезание линии по выбранной точке
-                        # arcpy.management.SplitLineAtPoint('dissolve_stream', 'point_output_end', "line_with_end_point", "1 Meters")
-                        # # 2.5.5.8.9. поиск верхней из двух линий
-                        # with arcpy.da.SearchCursor('dissolve_stream', 'SHAPE@') as cursor:
-                        #     for row in cursor:
-                        #         coords_start = tuple((row[0].firstPoint.X, row[0].firstPoint.Y))
-                        #         break
-                        # objval_1 = 0
-                        # with arcpy.da.SearchCursor('line_with_end_point', ['SHAPE@', 'OID@']) as cursor:
-                        #     for row in cursor:
-                        #         split_start = tuple((row[0].firstPoint.X, row[0].firstPoint.Y))
-                        #         if (coords_start == split_start):
-                        #             objval_1 = row[1]
-                        #             break
-                        # query_line_1 = '"OBJECTID" = {0}'.format(objval_1)
-                        # aval_tranz_zone = arcpy.MakeFeatureLayer_management('line_with_end_point', aval_tranz_zone, query_line_1)
-            break
+                        arcpy.management.SplitLineAtPoint('dissolve_stream', 'point_output_end', "line_with_end_point", "1 Meters")
+                        # 2.5.5.8.9. поиск верхней из двух линий
+                        with arcpy.da.SearchCursor('dissolve_stream', 'SHAPE@') as cursor:
+                            for row in cursor:
+                                coords_start = tuple((row[0].firstPoint.X, row[0].firstPoint.Y))
+                                break
+                        objval_1 = 0
+                        with arcpy.da.SearchCursor('line_with_end_point', ['SHAPE@', 'OID@']) as cursor:
+                            for row in cursor:
+                                split_start = tuple((row[0].firstPoint.X, row[0].firstPoint.Y))
+                                if (coords_start == split_start):
+                                    objval_1 = row[1]
+                                    break
+                        query_line_1 = '"OBJECTID" = {0}'.format(objval_1)
+                        aval_tranz_zone = arcpy.MakeFeatureLayer_management('line_with_end_point', aval_tranz_zone, query_line_1)
+                        break
         arcpy.AddMessage('Point end ok')
         point_20_25 = ["point_zone_20", "point_zone_25"]
         arcpy.Merge_management(point_20_25, "point_intersect_20_25_degree")
@@ -539,99 +523,99 @@ class Reconstruction_of_watershades(object):
 
         arcpy.AddMessage('Watershed ok')
 
-        # aval_tranz_zone_flip = arcpy.edit.FlipLine(aval_tranz_zone)
-        # arcpy.analysis.Intersect([watershed_output, aval_tranz_zone_flip] , "intersect_point_slope_25", "", "", "POINT")
-        # arcpy.management.MultipartToSinglepart('intersect_point_slope_25', "intersect_point_25_sing")
-        # arcpy.management.AddGeometryAttributes(aval_tranz_zone, "LENGTH","METERS")
-        # len_all_line = [i[0] for i in arcpy.da.SearchCursor(aval_tranz_zone, "LENGTH")][0]
-        # len_treshold_line = len_all_line * 20 / 100
-        # point_list = []
-        # inter_point = [i[0] for i in arcpy.da.SearchCursor('intersect_point_25_sing', "OBJECTID")]
-        # for i in range(len(inter_point)):
-        #     point_i = 'point_i_%s' % (i+1)
-        #     if i < len(inter_point) - 1:
-        #         query_inter_poin = '"OBJECTID" = {0} OR "OBJECTID" = {1}'.format((i+1),(i+2))
-        #         arcpy.MakeFeatureLayer_management('intersect_point_25_sing', "i_point", query_inter_poin)
-        #         arcpy.management.SplitLineAtPoint(aval_tranz_zone, 'i_point', "i_stream", "1 Meters")
-        #         with arcpy.da.SearchCursor(aval_tranz_zone, 'SHAPE@') as cursor:
-        #             for row in cursor:
-        #                 coords_start = tuple((row[0].firstPoint.X, row[0].firstPoint.Y))
-        #                 coords_end = tuple((row[0].lastPoint.X, row[0].lastPoint.Y))
-        #                 break
-        #         objval_2 = 0
-        #         with arcpy.da.SearchCursor('i_stream', ['SHAPE@', 'OID@']) as cursor:
-        #             for row in cursor:
-        #                 split_start = tuple((row[0].firstPoint.X, row[0].firstPoint.Y))
-        #                 split_end = tuple((row[0].lastPoint.X, row[0].lastPoint.Y))
-        #                 if (coords_start != split_start and coords_end != split_end):
-        #                     objval_2 = row[1]
-        #                     break
-        #         query_line_2 = '"OBJECTID" = {0}'.format(objval_2)
-        #     else:
-        #         query_inter_poin = '"OBJECTID" = {0}'.format(i+1)
-        #         arcpy.MakeFeatureLayer_management('intersect_point_25_sing', "i_point", query_inter_poin)
-        #         arcpy.management.SplitLineAtPoint(aval_tranz_zone, 'i_point', "i_stream", "1 Meters")
-        #         with arcpy.da.SearchCursor(aval_tranz_zone, 'SHAPE@') as cursor:
-        #             for row in cursor:
-        #                 coords_start = tuple((row[0].firstPoint.X, row[0].firstPoint.Y))
-        #                 break
-        #         objval_2 = 0
-        #         with arcpy.da.SearchCursor('i_stream', ['SHAPE@', 'OID@']) as cursor:
-        #             for row in cursor:
-        #                 split_start = tuple((row[0].firstPoint.X, row[0].firstPoint.Y))
-        #                 if (coords_start == split_start):
-        #                     objval_2 = row[1]
-        #                     break
-        #         query_line_2 = '"OBJECTID" = {0}'.format(objval_2)
-        #     arcpy.MakeFeatureLayer_management('i_stream', "i_stream_interest", query_line_2)
+        aval_tranz_zone_flip = arcpy.edit.FlipLine(aval_tranz_zone)
+        arcpy.analysis.Intersect([watershed_output, aval_tranz_zone_flip] , "intersect_point_slope_25", "", "", "POINT")
+        arcpy.management.MultipartToSinglepart('intersect_point_slope_25', "intersect_point_25_sing")
+        arcpy.management.AddGeometryAttributes(aval_tranz_zone, "LENGTH","METERS")
+        len_all_line = [i[0] for i in arcpy.da.SearchCursor(aval_tranz_zone, "LENGTH")][0]
+        len_treshold_line = len_all_line * 20 / 100
+        point_list = []
+        inter_point = [i[0] for i in arcpy.da.SearchCursor('intersect_point_25_sing', "OBJECTID")]
+        for i in range(len(inter_point)):
+            point_i = 'point_i_%s' % (i+1)
+            if i < len(inter_point) - 1:
+                query_inter_poin = '"OBJECTID" = {0} OR "OBJECTID" = {1}'.format((i+1),(i+2))
+                arcpy.MakeFeatureLayer_management('intersect_point_25_sing', "i_point", query_inter_poin)
+                arcpy.management.SplitLineAtPoint(aval_tranz_zone, 'i_point', "i_stream", "1 Meters")
+                with arcpy.da.SearchCursor(aval_tranz_zone, 'SHAPE@') as cursor:
+                    for row in cursor:
+                        coords_start = tuple((row[0].firstPoint.X, row[0].firstPoint.Y))
+                        coords_end = tuple((row[0].lastPoint.X, row[0].lastPoint.Y))
+                        break
+                objval_2 = 0
+                with arcpy.da.SearchCursor('i_stream', ['SHAPE@', 'OID@']) as cursor:
+                    for row in cursor:
+                        split_start = tuple((row[0].firstPoint.X, row[0].firstPoint.Y))
+                        split_end = tuple((row[0].lastPoint.X, row[0].lastPoint.Y))
+                        if (coords_start != split_start and coords_end != split_end):
+                            objval_2 = row[1]
+                            break
+                query_line_2 = '"OBJECTID" = {0}'.format(objval_2)
+            else:
+                query_inter_poin = '"OBJECTID" = {0}'.format(i+1)
+                arcpy.MakeFeatureLayer_management('intersect_point_25_sing', "i_point", query_inter_poin)
+                arcpy.management.SplitLineAtPoint(aval_tranz_zone, 'i_point', "i_stream", "1 Meters")
+                with arcpy.da.SearchCursor(aval_tranz_zone, 'SHAPE@') as cursor:
+                    for row in cursor:
+                        coords_start = tuple((row[0].firstPoint.X, row[0].firstPoint.Y))
+                        break
+                objval_2 = 0
+                with arcpy.da.SearchCursor('i_stream', ['SHAPE@', 'OID@']) as cursor:
+                    for row in cursor:
+                        split_start = tuple((row[0].firstPoint.X, row[0].firstPoint.Y))
+                        if (coords_start == split_start):
+                            objval_2 = row[1]
+                            break
+                query_line_2 = '"OBJECTID" = {0}'.format(objval_2)
+            arcpy.MakeFeatureLayer_management('i_stream', "i_stream_interest", query_line_2)
 
-        #     arcpy.management.AddGeometryAttributes('i_stream_interest', "LENGTH","METERS")
-        #     len_i_line = [k[0] for k in arcpy.da.SearchCursor('i_stream_interest', "LENGTH")][0]
-        #     if len_i_line >= len_treshold_line:
-        #         query_inter_poin_interest = '"OBJECTID" = {0}'.format(i+1)
-        #         arcpy.MakeFeatureLayer_management('intersect_point_25_sing', point_i, query_inter_poin_interest)
-        #         point_list.append(point_i)
-        #     arcpy.Delete_management('i_point')
-        #     arcpy.Delete_management('i_stream')
-        #     arcpy.Delete_management('i_stream_interest')
+            arcpy.management.AddGeometryAttributes('i_stream_interest', "LENGTH","METERS")
+            len_i_line = [k[0] for k in arcpy.da.SearchCursor('i_stream_interest', "LENGTH")][0]
+            if len_i_line >= len_treshold_line:
+                query_inter_poin_interest = '"OBJECTID" = {0}'.format(i+1)
+                arcpy.MakeFeatureLayer_management('intersect_point_25_sing', point_i, query_inter_poin_interest)
+                point_list.append(point_i)
+            arcpy.Delete_management('i_point')
+            arcpy.Delete_management('i_stream')
+            arcpy.Delete_management('i_stream_interest')
 
-        # arcpy.AddMessage('point_list %s' % point_list)
+        arcpy.AddMessage('point_list %s' % point_list)
 
-        # arcpy.Merge_management(point_list, "point_intersect_len")
+        arcpy.Merge_management(point_list, "point_intersect_len")
 
-        # len_inter_point_1 = [i[0] for i in arcpy.da.SearchCursor('point_intersect_len', "OBJECTID")]
-        # len_inter_point = len(len_inter_point_1)
-        # arcpy.AddMessage('len_inter_point_1 %s' % len_inter_point_1)
-        # arcpy.AddMessage('len_inter_point %s' % len_inter_point)
+        len_inter_point_1 = [i[0] for i in arcpy.da.SearchCursor('point_intersect_len', "OBJECTID")]
+        len_inter_point = len(len_inter_point_1)
+        arcpy.AddMessage('len_inter_point_1 %s' % len_inter_point_1)
+        arcpy.AddMessage('len_inter_point %s' % len_inter_point)
 
-        # if len_inter_point > 1:
-        #     point_id = [i[0] for i in arcpy.da.SearchCursor('point_intersect_len', "OBJECTID")][0]
-        #     query_point_25 = '"OBJECTID" = {0}'.format(point_id)
-        #     arcpy.MakeFeatureLayer_management('point_intersect_len', "point_25_degree_end", query_point_25)
-        # else:
-        #     arcpy.MakeFeatureLayer_management('point_intersect_len', "point_25_degree_end")
+        if len_inter_point > 1:
+            point_id = [i[0] for i in arcpy.da.SearchCursor('point_intersect_len', "OBJECTID")][0]
+            query_point_25 = '"OBJECTID" = {0}'.format(point_id)
+            arcpy.MakeFeatureLayer_management('point_intersect_len', "point_25_degree_end", query_point_25)
+        else:
+            arcpy.MakeFeatureLayer_management('point_intersect_len', "point_25_degree_end")
 
-        # arcpy.FeatureVerticesToPoints_management(aval_tranz_zone, "start_end_point", "BOTH_ENDS")
-        # arcpy.sa.ExtractValuesToPoints('start_end_point', DEM_fill, "start_end_point_xyz")
-        # s_e_points = [i[0] for i in arcpy.da.SearchCursor('start_end_point_xyz', "RASTERVALU")]
-        # razn_z_start_end = s_e_points[0]-s_e_points[1]
-        # if razn_z_start_end > 0:
-        #     query_point_start_end = '"OBJECTID" = 1'
-        # else:
-        #     query_point_start_end = '"OBJECTID" = 2'
-        # arcpy.MakeFeatureLayer_management('start_end_point_xyz', "start_point", query_point_start_end)
-        # arcpy.management.SelectLayerByLocation('start_point' , "INTERSECT", watershed_output , "","NEW_SELECTION", "INVERT")
-        # arcpy.MakeFeatureLayer_management('start_point', "start_point_inter")
-        # len_inter_0 = len([i[0] for i in arcpy.da.SearchCursor('start_point_inter', "OBJECTID")])
-        # if len_inter_0 != 0:
-        #     start_point_25 = [i[0] for i in arcpy.da.SearchCursor('intersect_point_25_sing', "OBJECTID")][-1]
-        #     query_start_point_25 = '"OBJECTID" = {0}'.format(start_point_25)
-        #     arcpy.MakeFeatureLayer_management('intersect_point_25_sing', "point_25_degree_start", query_start_point_25) #point_25_degree_start
-        #     point_start_end = ["point_25_degree_end", 'point_25_degree_start']
-        #     arcpy.Merge_management(point_start_end, "point_25_degree")
-        #     out_stream_links = arcpy.management.SplitLineAtPoint(aval_tranz_zone, 'point_25_degree', out_stream_links, "1 Meters")
-        # else:
-        #     out_stream_links = arcpy.management.SplitLineAtPoint(aval_tranz_zone, 'point_25_degree_end', out_stream_links, "1 Meters")
+        arcpy.FeatureVerticesToPoints_management(aval_tranz_zone, "start_end_point", "BOTH_ENDS")
+        arcpy.sa.ExtractValuesToPoints('start_end_point', DEM_fill, "start_end_point_xyz")
+        s_e_points = [i[0] for i in arcpy.da.SearchCursor('start_end_point_xyz', "RASTERVALU")]
+        razn_z_start_end = s_e_points[0]-s_e_points[1]
+        if razn_z_start_end > 0:
+            query_point_start_end = '"OBJECTID" = 1'
+        else:
+            query_point_start_end = '"OBJECTID" = 2'
+        arcpy.MakeFeatureLayer_management('start_end_point_xyz', "start_point", query_point_start_end)
+        arcpy.management.SelectLayerByLocation('start_point' , "INTERSECT", watershed_output , "","NEW_SELECTION", "INVERT")
+        arcpy.MakeFeatureLayer_management('start_point', "start_point_inter")
+        len_inter_0 = len([i[0] for i in arcpy.da.SearchCursor('start_point_inter', "OBJECTID")])
+        if len_inter_0 != 0:
+            start_point_25 = [i[0] for i in arcpy.da.SearchCursor('intersect_point_25_sing', "OBJECTID")][-1]
+            query_start_point_25 = '"OBJECTID" = {0}'.format(start_point_25)
+            arcpy.MakeFeatureLayer_management('intersect_point_25_sing', "point_25_degree_start", query_start_point_25) #point_25_degree_start
+            point_start_end = ["point_25_degree_end", 'point_25_degree_start']
+            arcpy.Merge_management(point_start_end, "point_25_degree")
+            out_stream_links = arcpy.management.SplitLineAtPoint(aval_tranz_zone, 'point_25_degree', out_stream_links, "1 Meters")
+        else:
+            out_stream_links = arcpy.management.SplitLineAtPoint(aval_tranz_zone, 'point_25_degree_end', out_stream_links, "1 Meters")
 
         
 
