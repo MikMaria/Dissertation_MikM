@@ -765,8 +765,30 @@ class Reconstruction_of_watershades(object):
             arcpy.AddMessage('angle_t %s' % angle_t)
             arcpy.AddMessage('len %s' % len_runout_after_30_degree)
 
-            d_x = len_runout_after_30_degree * (360 - math.cos(angle_t))
-            d_y = len_runout_after_30_degree * (360 - math.sin(angle_t))
+            arcpy.AddMessage('angle_t %s' % angle_t)
+            arcpy.AddMessage('len %s' % len_runout_after_30_degree)
+
+            if angle_t > 0 and angle_t <= 90:
+                angle_len = 90 - angle_t
+            if angle_t > 90 and angle_t <= 180:
+                angle_len = angle_t - 90
+            if angle_t > 180 and angle_t <= 270:
+                angle_len = 270 - angle_t
+            if angle_t > 270 and angle_t <= 360:
+                angle_len = angle_t - 270
+            
+            arcpy.AddMessage('angle_len %s' % angle_len)
+            cos_angle_len = math.cos(angle_len)
+            sin_angle_len = math.sin(angle_len)
+
+            arcpy.AddMessage('cos_angle_len %s' % cos_angle_len)
+            arcpy.AddMessage('sin_angle_len %s' % sin_angle_len)
+
+            d_x = len_runout_after_30_degree * cos_angle_len
+            d_y = len_runout_after_30_degree * sin_angle_len
+
+            arcpy.AddMessage('d_x %s' % d_x)
+            arcpy.AddMessage('d_y %s' % d_y)
 
             x_new = px_r + d_x
             y_new = py_r + d_y
@@ -774,8 +796,13 @@ class Reconstruction_of_watershades(object):
             arcpy.AddMessage('x_new %s' % x_new)
             arcpy.AddMessage('y_new %s' % y_new)
 
+            arcpy.AddMessage('coord_syst %s' % coord_syst)
+
+            sr = arcpy.SpatialReference(32636)
+            # sr.loadFromString(coord_syst)
+
             pt = arcpy.Point(x_new, y_new)
-            pt_geometry = arcpy.PointGeometry(pt, spatial_reference=arcpy.SpatialReference(coord_syst))
+            pt_geometry = arcpy.PointGeometry(pt)
             point_output = arcpy.MakeFeatureLayer_management(pt_geometry, point_output)
 
 
