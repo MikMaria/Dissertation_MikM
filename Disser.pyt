@@ -798,11 +798,13 @@ class Reconstruction_of_watershades(object):
 
             arcpy.AddMessage('coord_syst %s' % coord_syst)
 
-            sr = arcpy.SpatialReference(32636)
-            # sr.loadFromString(coord_syst)
+            sr = arcpy.SpatialReference()
+            coord_syst_wkt = '%s' % coord_syst
+            sr.loadFromString(coord_syst_wkt)
 
             pt = arcpy.Point(x_new, y_new)
-            pt_geometry = arcpy.PointGeometry(pt)
+            pt_geometry = arcpy.PointGeometry(pt, sr)
+            
             point_output = arcpy.MakeFeatureLayer_management(pt_geometry, point_output)
 
 
