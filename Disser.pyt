@@ -806,8 +806,7 @@ class Reconstruction_of_watershades(object):
             pt_geometry = arcpy.PointGeometry(pt, sr)
 
             point_ptr = arcpy.management.CreateFeatureclass("in_memory", "point_ptr", "POINT", "", "DISABLED", "DISABLED", spatial_reference=sr)
-            cursor = arcpy.da.InsertCursor(point_ptr, ["SHAPE@"])
-            for row in cursor:
+            with arcpy.da.InsertCursor(point_ptr, ["SHAPE@"]) as cursor:
                 cursor.insertRow([pt_geometry])
             arcpy.MakeFeatureLayer_management("point_class", "output_point", '"OBJECTID" = 1 OR "OBJECTID" = 0')
 
