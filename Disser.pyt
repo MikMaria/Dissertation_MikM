@@ -174,13 +174,29 @@ class Reconstruction_of_watershades(object):
             datatype="GPFeatureLayer",
             parameterType="Optional",
             direction="Output")
-
-        aval_tranz_zone = arcpy.Parameter(
-            displayName="Start zone and Track",
-            name="aval_tranz_zone",
+        
+        
+        start_treck = arcpy.Parameter(
+            displayName="Start treck",
+            name="start_treck",
             datatype="GPFeatureLayer",
             parameterType="Optional",
             direction="Output")
+
+        tranzit_treck = arcpy.Parameter(
+            displayName="Tranzit treck",
+            name="tranzit_treck",
+            datatype="GPFeatureLayer",
+            parameterType="Optional",
+            direction="Output")
+        
+        runout_treck  = arcpy.Parameter(
+            displayName="Runout treck",
+            name="runout_treck",
+            datatype="GPFeatureLayer",
+            parameterType="Optional",
+            direction="Output")        
+
         
         out_stream_links = arcpy.Parameter(
             displayName="Output Stream",
@@ -196,11 +212,19 @@ class Reconstruction_of_watershades(object):
             parameterType="Optional",
             direction="Output")
         
+        aval_tranz_zone = arcpy.Parameter(
+            displayName="aval_tranz_zone",
+            name="aval_tranz_zone",
+            datatype="GPFeatureLayer",
+            parameterType="Optional",
+            direction="Derived")
+        
         
         
 
         parameters = [DEM_input, input_mask, select_watercourses, coord_syst, 
                       tranzit_zone_polygon, watershed_output,
+                      start_treck, tranzit_treck, runout_treck,
                       
                       aval_tranz_zone, out_stream_links, point_output
                       ]
@@ -232,13 +256,14 @@ class Reconstruction_of_watershades(object):
         tranzit_zone_polygon = parameters[4].valueAsText
         watershed_output = parameters[5].valueAsText
 
-        aval_tranz_zone = parameters[6].valueAsText
+        start_treck = parameters[6].valueAsText
+        tranzit_treck = parameters[7].valueAsText
+        runout_treck = parameters[8].valueAsText
 
-        out_stream_links = parameters[7].valueAsText
-        point_output = parameters[8].valueAsText
+        aval_tranz_zone = parameters[9].valueAsText
+        out_stream_links = parameters[10].valueAsText
+        point_output = parameters[11].valueAsText
         
-
-
         # Подготовительный этап. Установка параметров среды: экстент, маска, размер ячейки на основе данных с ЦМР
         arcpy.env.overwriteOutput = True
         arcpy.env.extent = DEM_input
@@ -257,7 +282,9 @@ class Reconstruction_of_watershades(object):
         for i in c_list:
             arcpy.Delete_management(i)
 
-        # Этап 1. Подготовка данных
+
+
+# Этап 1. ПОИСК ТОЧКИ В 20 ГРАДУСОВ
         # 1.1. вычисление углов наклона в градусах
         slope_degree = arcpy.sa.Slope(DEM_input, "DEGREE")
         slope_tangent = arcpy.sa.Times(slope_degree, 0.0174533)  
@@ -282,7 +309,6 @@ class Reconstruction_of_watershades(object):
         # 1.7. создание копии единой линии. Это необходимо для того, чтобы загустить вершины по размеру ячейки ЦМР 
         arcpy.management.Copy('dissolve_stream', "dens_copy")
 
-        #Этап 2. Обрезка водотока
         # 2.1.уплотнение исходной линии в соответствии с размером ячейки (необходимо для извлечения углов наклона из каждой ячейки)
         densify_line = arcpy.edit.Densify('dens_copy', "DISTANCE", cell_x)
         # 2.2 извлечение вершин уплотненной линии и присвоение им значения с растра углов наклона
@@ -479,6 +505,10 @@ class Reconstruction_of_watershades(object):
 
 
 
+
+
+
+# ПОИСК ВО3МОЖНОГО ИСКРИВЛЕНИЯ ЛИНИИ БОЛЬШЕ ЧЕМ НА 30 ГРАДУСОВ
         # уплотняем зону осаждения по размеру ячейки
         arcpy.edit.Densify('runout_line_no_angle', "DISTANCE", cell_p)
         # превращаем линию в точки
@@ -553,17 +583,20 @@ class Reconstruction_of_watershades(object):
             arcpy.MakeFeatureLayer_management('runout_zone_point_30', "30_degree_wsh")
             arcpy.MakeFeatureLayer_management('point_zone_20', "20_degree")
             point_list_interest_point = ['20_degree','25_degree', '30_degree']
-
         else:
             arcpy.MakeFeatureLayer_management('point_zone_20', "20_degree")
             point_list_interest_point = ['20_degree','25_degree']
             arcpy.FeatureVerticesToPoints_management('runout_zone_line', "point_runout_zone_line", "BOTH_ENDS")
             query_point_30_end = '"OBJECTID" = 1'
             arcpy.MakeFeatureLayer_management('point_runout_zone_line', "30_degree_wsh", query_point_30_end)
+            runout_treck = arcpy.MakeFeatureLayer_management('runout_line_no_angle', runout_treck)
 
 
         arcpy.AddMessage('Point 30 ok')
             
+
+
+# ПОИСК ПОЛИГОНА 3ОНЫ 3АРОЖДЕНИЯ
         # Этап 3. Поиск полигона зоны зарождения
         # 3.1. поиск изогоны со значением 25 градусов
         # 3.1.1. создание искусственной поверхности из растра углов наклона (умноженной на значимое число)
@@ -626,6 +659,10 @@ class Reconstruction_of_watershades(object):
 
         arcpy.AddMessage('Start zone polygon ok')
 
+
+
+
+# ПОИСК ПОЛИГОНА 3ОНЫ ТРАН3ИТА
         remap_20 = arcpy.sa.RemapRange([[0,2000,0],[2000,6000,1],[6000,9000,0]])
         slope_reclass_20 = arcpy.sa.Reclassify(Slope_fill, "Value", remap_20, "NODATA")
         # 3.1.4. превращение растра в полигоны и отбор (оставляются только полигоны с углами наклона более25 градусов)
@@ -678,247 +715,311 @@ class Reconstruction_of_watershades(object):
         query_area_poly_20 = '"OBJECTID" = 1'
         arcpy.MakeFeatureLayer_management('watershed_intersect_sort_20', "area_poly_20", query_area_poly_20)
 
-        tranzit_zone_polygon = arcpy.analysis.SymDiff('area_poly_20', watershed_output, tranzit_zone_polygon)
+        arcpy.analysis.SymDiff('area_poly_20', watershed_output, "zone_polygon_all")
+        arcpy.analysis.Intersect(['zone_polygon_all', aval_tranz_zone], "point_int_zone_polygon_multi", "", "", "POINT")
+        arcpy.management.MultipartToSinglepart('point_int_zone_polygon_multi', "point_int_zone_polygon_single")
+        arcpy.sa.ExtractValuesToPoints('point_int_zone_polygon_single', DEM_fill, "point_int_zone_polygon_all_height")
+        arcpy.management.Sort('point_int_zone_polygon_all_height', "point_int_zone_polygon_all_height_sort", [["RASTERVALU", "ASCENDING"]])
+        point_2_down = [i[0] for i in arcpy.da.SearchCursor('point_int_zone_polygon_all_height_sort', "OBJECTID")][0]
 
+        query_area_poly_20 = '"OBJECTID" =  {0}'.format(point_2_down)
+        arcpy.MakeFeatureLayer_management('point_int_zone_polygon_all_height_sort', "point_int_20_down", query_area_poly_20)
+        arcpy.MakeFeatureLayer_management('zone_polygon_all', "zone_polygon_all_fl")
+        arcpy.management.MultipartToSinglepart('zone_polygon_all_fl', "zone_polygon_all_fl_single")
+        arcpy.MakeFeatureLayer_management('zone_polygon_all_fl_single', "zone_polygon_all_fl_single_fl")
+        arcpy.management.SelectLayerByLocation('zone_polygon_all_fl_single_fl', "INTERSECT", 'point_int_20_down')
+
+        arcpy.MakeFeatureLayer_management('zone_polygon_all_fl_single_fl', "tranzit_zone_polygon_no_20")
+        arcpy.management.PolygonToLine('tranzit_zone_polygon_no_20', "tranzit_zone_no_20_line")
+        arcpy.MakeFeatureLayer_management('tranzit_zone_no_20_line', "tranzit_zone_no_20_line_fl")
+        arcpy.management.FeatureVerticesToPoints('tranzit_zone_no_20_line_fl', "point_tranzit_zone_no_20", "ALL")
+
+        arcpy.management.AddGeometryAttributes('point_tranzit_zone_no_20', "POINT_X_Y_Z_M","METERS")
+        px_tz = [k[0] for k in arcpy.da.SearchCursor('point_tranzit_zone_no_20', "POINT_X")]
+        py_tz = [k[0] for k in arcpy.da.SearchCursor('point_tranzit_zone_no_20', "POINT_Y")]
+        arcpy.management.AddGeometryAttributes('20_degree', "POINT_X_Y_Z_M","METERS")
+        px_20 = [k[0] for k in arcpy.da.SearchCursor('20_degree', "POINT_X")][0]
+        py_20 = [k[0] for k in arcpy.da.SearchCursor('20_degree', "POINT_Y")][0]
+        ro_20_zt_list = []
+
+        for i in range(len(px_tz)):
+            razn_x_zt_20 = abs(px_20 - px_tz[i]) 
+            razn_y_zt_20 = abs(py_20 - py_tz[i])
+            ro_20_zt = math.sqrt(razn_x_zt_20**2 + razn_y_zt_20**2)
+            ro_20_zt_list.append(ro_20_zt)
+        min_dist_20_tz = math.ceil(min(ro_20_zt_list) + cell_p/2)
+        arcpy.edit.Snap('tranzit_zone_no_20_line', [['20_degree', "VERTEX",  min_dist_20_tz]])
+        tranzit_zone_polygon = arcpy.management.FeatureToPolygon('tranzit_zone_no_20_line', tranzit_zone_polygon)
         arcpy.AddMessage('Tranzit zone polygon ok')
 
-        arcpy.management.PolygonToLine(watershed_output, "watershed_out_line")
-        arcpy.FeatureVerticesToPoints_management('watershed_out_line', "watershed_out_line_vertex", "ALL")
-        arcpy.management.SplitLineAtPoint('watershed_out_line', 'watershed_out_line_vertex', "watershed_out_line_split", "1 Meters")
-
-        arcpy.edit.EdgematchFeatures(aval_tranz_zone, 'watershed_out_line_split')
 
 
 
 
-        # # Разворачиваем линию так, чтобы счет шел снизу вверх, а не сверху вниз
-        # aval_tranz_zone_flip = arcpy.edit.FlipLine(aval_tranz_zone)
-        # # Ищем пересечения развернутой линии и полигона водораздела
-        # arcpy.analysis.Intersect([watershed_output, aval_tranz_zone_flip] , "intersect_point_slope_25", "", "", "POINT")
-        # # результатом поиска будут мультиточки, поэтому ищем просто точки
-        # arcpy.management.MultipartToSinglepart('intersect_point_slope_25', "intersect_point_25_sing")
-        # # к развернутой линии добавляем параметр длины для того, чтобы узнать суммарную длину зоны транзита и зоны зарождения
-        # arcpy.management.AddGeometryAttributes(aval_tranz_zone_flip, "LENGTH","METERS")
-        # len_all_line = [i[0] for i in arcpy.da.SearchCursor(aval_tranz_zone_flip, "LENGTH")][0]
-        # # задаем параметр процента длины от общей длины
-        # len_treshold_line = len_all_line * 20 / 100
-        # point_list = []
-        # # делаем список из id точек
-        # inter_point = [i[0] for i in arcpy.da.SearchCursor('intersect_point_25_sing', "OBJECTID")]
-        # # начинаем проходить по списку 
-        # for i in range(len(inter_point)):
-        #     point_i = 'point_i_%s' % (i+1)
-        #     # от первой до предпоследней точки извлекаем эту точку и следующую, так как i начинается с 0, берем i+1 и i+2
-        #     if i < len(inter_point) - 1:
-        #         query_inter_poin = '"OBJECTID" = {0} OR "OBJECTID" = {1}'.format((i+1),(i+2))
-        #         arcpy.MakeFeatureLayer_management('intersect_point_25_sing', "i_point", query_inter_poin)
-        #         # режем линию по этим двум точкам (1 линия - сверху, посередине, последняя линия - снизу, нам нужна та, что в серединке)
-        #         arcpy.management.SplitLineAtPoint(aval_tranz_zone_flip, 'i_point', "i_stream", "1 Meters")
-        #         with arcpy.da.SearchCursor(aval_tranz_zone_flip, 'SHAPE@') as cursor:
-        #             for row in cursor:
-        #                 coords_start = tuple((row[0].firstPoint.X, row[0].firstPoint.Y))
-        #                 coords_end = tuple((row[0].lastPoint.X, row[0].lastPoint.Y))
-        #                 break
-        #         objval_2 = 0
-        #         with arcpy.da.SearchCursor('i_stream', ['SHAPE@', 'OID@']) as cursor:
-        #             for row in cursor:
-        #                 split_start = tuple((row[0].firstPoint.X, row[0].firstPoint.Y))
-        #                 split_end = tuple((row[0].lastPoint.X, row[0].lastPoint.Y))
-        #                 if (coords_start != split_start and coords_end != split_end):
-        #                     objval_2 = row[1]
-        #                     break
-        #         query_line_2 = '"OBJECTID" = {0}'.format(objval_2)
-        #     # если точка последняя, то режем по ней и берем первую линию
-        #     else:
-        #         query_inter_poin = '"OBJECTID" = {0}'.format(i+1)
-        #         arcpy.MakeFeatureLayer_management('intersect_point_25_sing', "i_point", query_inter_poin)
-        #         arcpy.management.SplitLineAtPoint(aval_tranz_zone_flip, 'i_point', "i_stream", "1 Meters")
-        #         with arcpy.da.SearchCursor(aval_tranz_zone_flip, 'SHAPE@') as cursor:
-        #             for row in cursor:
-        #                 coords_start = tuple((row[0].lastPoint.X, row[0].lastPoint.Y))
-        #                 break
-        #         objval_2 = 0
-        #         with arcpy.da.SearchCursor('i_stream', ['SHAPE@', 'OID@']) as cursor:
-        #             for row in cursor:
-        #                 split_start = tuple((row[0].lastPoint.X, row[0].lastPoint.Y))
-        #                 if (coords_start == split_start):
-        #                     objval_2 = row[1]
-        #                     break
-        #         query_line_2 = '"OBJECTID" = {0}'.format(objval_2)
-        #     arcpy.MakeFeatureLayer_management('i_stream', "i_stream_interest", query_line_2)
-        #     # результатом является линия между двумя точками или последняя линия
-        #     # к ней добавляем длину в метрах и извлекаем ее
-        #     arcpy.management.AddGeometryAttributes('i_stream_interest', "LENGTH","METERS")
-        #     len_i_line = [k[0] for k in arcpy.da.SearchCursor('i_stream_interest', "LENGTH")][0]
-        #     # если длина выбранной линии больше порога, то заходим в цикл
-        #     if len_i_line >= len_treshold_line:
-        #         query_inter_poin_interest = '"OBJECTID" = {0}'.format(i+1)
-        #         # добавляем начальную точку в общий список под уникальным именем
-        #         arcpy.MakeFeatureLayer_management('intersect_point_25_sing', point_i, query_inter_poin_interest)
-        #         point_list.append(point_i)
-        #     arcpy.Delete_management('i_point')
-        #     arcpy.Delete_management('i_stream')
-        #     arcpy.Delete_management('i_stream_interest')
+# ПОИСК ТОЧКИ 25 ГРАДУСОВ
+        # Разворачиваем линию так, чтобы счет шел снизу вверх, а не сверху вниз
+        aval_tranz_zone_flip = arcpy.edit.FlipLine(aval_tranz_zone)
+        # Ищем пересечения развернутой линии и полигона водораздела
+        arcpy.analysis.Intersect([watershed_output, aval_tranz_zone_flip] , "intersect_point_slope_25", "", "", "POINT")
+        # результатом поиска будут мультиточки, поэтому ищем просто точки
+        arcpy.management.MultipartToSinglepart('intersect_point_slope_25', "intersect_point_25_sing")
+        # к развернутой линии добавляем параметр длины для того, чтобы узнать суммарную длину зоны транзита и зоны зарождения
+        arcpy.management.AddGeometryAttributes(aval_tranz_zone_flip, "LENGTH","METERS")
+        len_all_line = [i[0] for i in arcpy.da.SearchCursor(aval_tranz_zone_flip, "LENGTH")][0]
+        # задаем параметр процента длины от общей длины
+        len_treshold_line = len_all_line * 20 / 100
+        point_list = []
+        # делаем список из id точек
+        inter_point = [i[0] for i in arcpy.da.SearchCursor('intersect_point_25_sing', "OBJECTID")]
+        # начинаем проходить по списку 
+        for i in range(len(inter_point)):
+            point_i = 'point_i_%s' % (i+1)
+            # от первой до предпоследней точки извлекаем эту точку и следующую, так как i начинается с 0, берем i+1 и i+2
+            if i < len(inter_point) - 1:
+                query_inter_poin = '"OBJECTID" = {0} OR "OBJECTID" = {1}'.format((i+1),(i+2))
+                arcpy.MakeFeatureLayer_management('intersect_point_25_sing', "i_point", query_inter_poin)
+                # режем линию по этим двум точкам (1 линия - сверху, посередине, последняя линия - снизу, нам нужна та, что в серединке)
+                arcpy.management.SplitLineAtPoint(aval_tranz_zone_flip, 'i_point', "i_stream", "1 Meters")
+                with arcpy.da.SearchCursor(aval_tranz_zone_flip, 'SHAPE@') as cursor:
+                    for row in cursor:
+                        coords_start = tuple((row[0].firstPoint.X, row[0].firstPoint.Y))
+                        coords_end = tuple((row[0].lastPoint.X, row[0].lastPoint.Y))
+                        break
+                objval_2 = 0
+                with arcpy.da.SearchCursor('i_stream', ['SHAPE@', 'OID@']) as cursor:
+                    for row in cursor:
+                        split_start = tuple((row[0].firstPoint.X, row[0].firstPoint.Y))
+                        split_end = tuple((row[0].lastPoint.X, row[0].lastPoint.Y))
+                        if (coords_start != split_start and coords_end != split_end):
+                            objval_2 = row[1]
+                            break
+                query_line_2 = '"OBJECTID" = {0}'.format(objval_2)
+            # если точка последняя, то режем по ней и берем первую линию
+            else:
+                query_inter_poin = '"OBJECTID" = {0}'.format(i+1)
+                arcpy.MakeFeatureLayer_management('intersect_point_25_sing', "i_point", query_inter_poin)
+                arcpy.management.SplitLineAtPoint(aval_tranz_zone_flip, 'i_point', "i_stream", "1 Meters")
+                with arcpy.da.SearchCursor(aval_tranz_zone_flip, 'SHAPE@') as cursor:
+                    for row in cursor:
+                        coords_start = tuple((row[0].lastPoint.X, row[0].lastPoint.Y))
+                        break
+                objval_2 = 0
+                with arcpy.da.SearchCursor('i_stream', ['SHAPE@', 'OID@']) as cursor:
+                    for row in cursor:
+                        split_start = tuple((row[0].lastPoint.X, row[0].lastPoint.Y))
+                        if (coords_start == split_start):
+                            objval_2 = row[1]
+                            break
+                query_line_2 = '"OBJECTID" = {0}'.format(objval_2)
+            arcpy.MakeFeatureLayer_management('i_stream', "i_stream_interest", query_line_2)
+            # результатом является линия между двумя точками или последняя линия
+            # к ней добавляем длину в метрах и извлекаем ее
+            arcpy.management.AddGeometryAttributes('i_stream_interest', "LENGTH","METERS")
+            len_i_line = [k[0] for k in arcpy.da.SearchCursor('i_stream_interest', "LENGTH")][0]
+            # если длина выбранной линии больше порога, то заходим в цикл
+            if len_i_line >= len_treshold_line:
+                query_inter_poin_interest = '"OBJECTID" = {0}'.format(i+1)
+                # добавляем начальную точку в общий список под уникальным именем
+                arcpy.MakeFeatureLayer_management('intersect_point_25_sing', point_i, query_inter_poin_interest)
+                point_list.append(point_i)
+            arcpy.Delete_management('i_point')
+            arcpy.Delete_management('i_stream')
+            arcpy.Delete_management('i_stream_interest')
 
-        # # создаем единый массив точек
-        # arcpy.Merge_management(point_list, "point_intersect_len")
-        # # смотрим на длину массива
-        # count_line_i = [k[0] for k in arcpy.da.SearchCursor('point_intersect_len', "OBJECTID")]
-        # query_point_25 = '"OBJECTID" = {0}'.format(count_line_i[0])
-        # # находим точку перегиба 
-        # arcpy.MakeFeatureLayer_management('point_intersect_len', "point_25_degree_end", query_point_25)
+        # создаем единый массив точек
+        arcpy.Merge_management(point_list, "point_intersect_len")
+        # смотрим на длину массива
+        count_line_i = [k[0] for k in arcpy.da.SearchCursor('point_intersect_len', "OBJECTID")]
+        query_point_25 = '"OBJECTID" = {0}'.format(count_line_i[0])
+        # находим точку перегиба 
+        arcpy.MakeFeatureLayer_management('point_intersect_len', "point_25_degree_end", query_point_25)
 
-        # # дальше смотрим на то, нет ли пересечений сверху и если есть, то выделяем его
-        # # находим верхнюю точку НЕ перевернутой линии
-        # arcpy.FeatureVerticesToPoints_management(aval_tranz_zone, "start_end_point", "BOTH_ENDS")
-        # arcpy.sa.ExtractValuesToPoints('start_end_point', DEM_fill, "start_end_point_xyz")
-        # s_e_points = [i[0] for i in arcpy.da.SearchCursor('start_end_point_xyz', "RASTERVALU")]
-        # razn_z_start_end = s_e_points[0]-s_e_points[1]
-        # if razn_z_start_end > 0:
-        #     query_point_start_end = '"OBJECTID" = 1'
-        # else:
-        #     query_point_start_end = '"OBJECTID" = 2'
-        # arcpy.MakeFeatureLayer_management('start_end_point_xyz', "start_point", query_point_start_end)
-        # # смотрим есть ли пересечение этой точки и водотока (выделение инвертируем)
-        # arcpy.management.SelectLayerByLocation('start_point' , "INTERSECT", watershed_output , "","NEW_SELECTION", "INVERT")
-        # # если пересечений нет, то значит точка лежит выше полигона водораздела и мы должны найти точку пересечения
-        # arcpy.MakeFeatureLayer_management('start_point', "start_point_inter")
-        # len_inter_0 = len([i[0] for i in arcpy.da.SearchCursor('start_point_inter', "OBJECTID")])
-        # if len_inter_0 != 0:
-        #     # в случае, если точка лежит выше водораздела, то точкой пересечения с линией в 25 градусов считаем верхнюю из точек пересечения
-        #     start_point_25 = [i[0] for i in arcpy.da.SearchCursor('intersect_point_25_sing', "OBJECTID")][-1]
-        #     query_start_point_25 = '"OBJECTID" = {0}'.format(start_point_25)
-        #     arcpy.MakeFeatureLayer_management('intersect_point_25_sing', "point_25_degree_start", query_start_point_25) #point_25_degree_start
-        #     point_start_end = ["point_25_degree_end", 'point_25_degree_start']
-        #     arcpy.Merge_management(point_start_end, "point_25_degree")
-        #     arcpy.management.SplitLineAtPoint(aval_tranz_zone, 'point_25_degree', "line_25_degree", "1 Meters")
-        # else:
-        #     arcpy.management.SplitLineAtPoint(aval_tranz_zone, 'point_25_degree_end', "line_25_degree", "1 Meters")
+        # дальше смотрим на то, нет ли пересечений сверху и если есть, то выделяем его
+        # находим верхнюю точку НЕ перевернутой линии
+        arcpy.FeatureVerticesToPoints_management(aval_tranz_zone, "start_end_point", "BOTH_ENDS")
+        arcpy.sa.ExtractValuesToPoints('start_end_point', DEM_fill, "start_end_point_xyz")
+        s_e_points = [i[0] for i in arcpy.da.SearchCursor('start_end_point_xyz', "RASTERVALU")]
+        razn_z_start_end = s_e_points[0]-s_e_points[1]
+        if razn_z_start_end > 0:
+            query_point_start_end = '"OBJECTID" = 1'
+        else:
+            query_point_start_end = '"OBJECTID" = 2'
+        arcpy.MakeFeatureLayer_management('start_end_point_xyz', "start_point", query_point_start_end)
 
-        # arcpy.AddMessage('6 Point 25 ok')
+        list_2_3 = ['start_point', 'point_25_degree_end']
+        arcpy.Merge_management(list_2_3, "start_25")
+        arcpy.MakeFeatureLayer_management('start_25', "start_25_fl")
 
-        # arcpy.MakeFeatureLayer_management('point_25_degree_end', "25_degree")
-        # arcpy.Merge_management(point_list_interest_point, "point_20_25_30")
-
-        # arcpy.management.SplitLineAtPoint('dissolve_stream', 'point_20_25_30', "avalanche_path_component", "1 Meters") 
-        # query_start = '"OBJECTID" = 1'
-        # query_tranzit = '"OBJECTID" = 2'
-        # query_runout = '"OBJECTID" = 3'
-        # arcpy.MakeFeatureLayer_management('avalanche_path_component', "start_zone_line", query_start)
-        # arcpy.MakeFeatureLayer_management('avalanche_path_component', "tranzit_zone_line", query_tranzit)
-        # arcpy.MakeFeatureLayer_management('avalanche_path_component', "runout_zone_line_1", query_runout)
-
-        # len_path_comp_count = len([i[0] for i in arcpy.da.SearchCursor('avalanche_path_component', "OBJECTID")])
-
-        # arcpy.AddMessage('7 Line zone ok')
-
-
-        # if len_path_comp_count == 4:
-        #     arcpy.FeatureVerticesToPoints_management('tranzit_zone_line', "start_end_point_tranzit", "BOTH_ENDS")
-        #     arcpy.management.AddGeometryAttributes('start_end_point_tranzit', "POINT_X_Y_Z_M","METERS")
-        #     arcpy.FeatureVerticesToPoints_management('runout_zone_line_1', "start_end_point_runout", "BOTH_ENDS")
-        #     arcpy.management.AddGeometryAttributes('start_end_point_runout', "POINT_X_Y_Z_M","METERS")
-
-        #     px_t = [k[0] for k in arcpy.da.SearchCursor('start_end_point_tranzit', "POINT_X")]
-        #     py_t = [k[0] for k in arcpy.da.SearchCursor('start_end_point_tranzit', "POINT_Y")]
-
-        #     px_r = [k[0] for k in arcpy.da.SearchCursor('start_end_point_runout', "POINT_X")][0]
-        #     py_r = [k[0] for k in arcpy.da.SearchCursor('start_end_point_runout', "POINT_Y")][0]
-
-        #     razn_tranzit_x = px_t[0] - px_t[1]
-        #     razn_tranzit_y = py_t[0] - py_t[1]
-
-        #     ro_x_t = abs(razn_tranzit_x)
-        #     ro_y_t = abs(razn_tranzit_y)
-
-        #     if razn_tranzit_x == 0:
-        #         angle_t = 0
-        #     if razn_tranzit_y == 0:
-        #         angle_t = 90
-        #     if razn_tranzit_x > 0 and razn_tranzit_y > 0:
-        #         tan_a = ro_x_t/ro_y_t
-        #         angle_t = math.degrees(math.atan(tan_a)) + 180
-        #     if razn_tranzit_x > 0 and razn_tranzit_y < 0:
-        #         tan_a = ro_x_t/ro_y_t
-        #         angle_t = 360 - math.degrees(math.atan(tan_a))
-        #     if razn_tranzit_x < 0 and razn_tranzit_y > 0:
-        #         tan_a = ro_x_t/ro_y_t
-        #         angle_t = 180 - math.degrees(math.atan(tan_a))
-        #     if razn_tranzit_x < 0 and razn_tranzit_y < 0:
-        #         tan_a = ro_x_t/ro_y_t
-        #         angle_t = math.degrees(math.atan(tan_a))
-
-        #     if angle_t > 0 and angle_t <= 90:
-        #         angle_len = 90 - angle_t
-        #         d_x = len_runout_after_30_degree *  math.cos(math.radians(angle_len))
-        #         d_y = len_runout_after_30_degree * math.sin(math.radians(angle_len))
-        #         x_new = px_r + d_x
-        #         y_new = py_r + d_y
-        #     if angle_t > 90 and angle_t <= 180:
-        #         angle_len = angle_t - 90
-        #         d_x = len_runout_after_30_degree *  math.cos(math.radians(angle_len))
-        #         d_y = len_runout_after_30_degree * math.sin(math.radians(angle_len))
-        #         x_new = px_r + d_x
-        #         y_new = py_r - d_y
-        #     if angle_t > 180 and angle_t <= 270:
-        #         angle_len = 270 - angle_t
-        #         d_x = len_runout_after_30_degree *  math.cos(math.radians(angle_len))
-        #         d_y = len_runout_after_30_degree * math.sin(math.radians(angle_len))
-        #         x_new = px_r - d_x
-        #         y_new = py_r - d_y
-        #     if angle_t > 270 and angle_t <= 360:
-        #         angle_len = angle_t - 270
-        #         d_x = len_runout_after_30_degree *  math.cos(math.radians(angle_len))
-        #         d_y = len_runout_after_30_degree * math.sin(math.radians(angle_len))
-        #         x_new = px_r - d_x
-        #         y_new = py_r + d_y
-        #     if angle_t == 0 and razn_tranzit_y > 0:
-        #         d_x = len_runout_after_30_degree *  math.cos(math.radians(angle_len))
-        #         d_y = len_runout_after_30_degree * math.sin(math.radians(angle_len))
-        #         x_new = px_r
-        #         y_new = py_r - d_y
-        #     if angle_t == 0 and razn_tranzit_y < 0:
-        #         d_x = len_runout_after_30_degree *  math.cos(math.radians(angle_len))
-        #         d_y = len_runout_after_30_degree * math.sin(math.radians(angle_len))
-        #         x_new = px_r
-        #         y_new = py_r + d_y
-        #     if angle_t == 90 and razn_tranzit_x > 0:
-        #         d_x = len_runout_after_30_degree *  math.cos(math.radians(angle_len))
-        #         d_y = len_runout_after_30_degree * math.sin(math.radians(angle_len))
-        #         x_new = px_r - d_x
-        #         y_new = py_r 
-        #     if angle_t == 90 and razn_tranzit_x < 0:
-        #         d_x = len_runout_after_30_degree *  math.cos(math.radians(angle_len))
-        #         d_y = len_runout_after_30_degree * math.sin(math.radians(angle_len))
-        #         x_new = px_r + d_x
-        #         y_new = py_r 
-
-        #     sr = arcpy.SpatialReference()
-        #     coord_syst_wkt = '%s' % coord_syst
-        #     sr.loadFromString(coord_syst_wkt)
-
-        #     pt = arcpy.Point(x_new, y_new)
-        #     pt_geometry = arcpy.PointGeometry(pt, sr)
-
-        #     point_ptr = arcpy.management.CreateFeatureclass("in_memory", "point_ptr", "POINT", "", "DISABLED", "DISABLED", spatial_reference=sr)
-        #     with arcpy.da.InsertCursor(point_ptr, ["SHAPE@"]) as cursor:
-        #         cursor.insertRow([pt_geometry])
-        #     arcpy.MakeFeatureLayer_management(point_ptr, "point_30_end")
-
-        #     arcpy.AddMessage('8 point 30 end ok')
-        #     point_runout_zone = ['30_degree', 'point_30_end']
-        #     arcpy.Merge_management(point_runout_zone, "point_runout_zone_st_end")
-        #     arcpy.management.PointsToLine('point_runout_zone_st_end', "runout_zone_line")
-        #     out_stream_links = arcpy.MakeFeatureLayer_management('runout_zone_line', out_stream_links)
+        # смотрим есть ли пересечение этой точки и водотока (выделение инвертируем)
+        arcpy.management.SelectLayerByLocation('start_25_fl' , "INTERSECT", watershed_output , "","NEW_SELECTION")
+        # если пересечений нет, то значит точка лежит выше полигона водораздела и мы должны найти точку пересечения
+        arcpy.MakeFeatureLayer_management('start_25_fl', "start_point_inter")
+        len_inter_0 = len([i[0] for i in arcpy.da.SearchCursor('start_point_inter', "OBJECTID")])
+        arcpy.AddMessage('len_inter_0 %s' %len_inter_0)
+        if len_inter_0 == 1:
+            arcpy.AddMessage('if')
+            # в случае, если точка лежит выше водораздела, то точкой пересечения с линией в 25 градусов считаем верхнюю из точек пересечения
+            start_point_25 = [i[0] for i in arcpy.da.SearchCursor('intersect_point_25_sing', "OBJECTID")][-1]
+            query_start_point_25 = '"OBJECTID" = {0}'.format(start_point_25)
+            arcpy.MakeFeatureLayer_management('intersect_point_25_sing', "point_25_degree_start", query_start_point_25) #point_25_degree_start
+            point_start_end = ["point_25_degree_end", 'point_25_degree_start']
+            arcpy.Merge_management(point_start_end, "point_25_degree")
+            arcpy.management.SplitLineAtPoint(aval_tranz_zone, 'point_25_degree', "line_25_degree", "1 Meters")
+            arcpy.MakeFeatureLayer_management('dissolve_stream', "line_to_wsh")
+        else:
+# СЮДА ДОБАВИТЬ ПРОДОЛЖЕНИЕ ЛИНИИ
+            arcpy.AddMessage('else')
+            arcpy.management.SplitLineAtPoint(aval_tranz_zone, 'point_25_degree_end', "line_25_degree", "1 Meters")
+            arcpy.management.AddGeometryAttributes('start_point', "POINT_X_Y_Z_M","METERS")
+            arcpy.management.PolygonToLine(watershed_output, "watershed_output_line")
+            arcpy.MakeFeatureLayer_management('watershed_output_line', "watershed_output_line_fl")
+            arcpy.management.FeatureVerticesToPoints('watershed_output_line_fl', "point_watershed_output_line_fl", "ALL")
+            arcpy.management.AddGeometryAttributes('point_watershed_output_line_fl', "POINT_X_Y_Z_M","METERS")
+            px_sz = [k[0] for k in arcpy.da.SearchCursor('point_watershed_output_line_fl', "POINT_X")]
+            py_sz = [k[0] for k in arcpy.da.SearchCursor('point_watershed_output_line_fl', "POINT_Y")]
+            arcpy.management.AddGeometryAttributes('start_point', "POINT_X_Y_Z_M","METERS")
+            px_25_start = [k[0] for k in arcpy.da.SearchCursor('start_point', "POINT_X")][0]
+            py_20_start = [k[0] for k in arcpy.da.SearchCursor('start_point', "POINT_Y")][0]
+            ro_20_sz_list = []
+            for i in range(len(px_sz)):
+                razn_x_sz_20 = abs(px_25_start - px_sz[i]) 
+                razn_y_sz_20 = abs(py_20_start - py_sz[i])
+                ro_20_sz = math.sqrt(razn_x_sz_20**2 + razn_y_sz_20**2)
+                ro_20_sz_list.append(ro_20_sz)
+            id_point_watershed = ro_20_sz_list.index(min(ro_20_sz_list))
+            query_point_watershed = '"OBJECTID" = {0}'.format(id_point_watershed)
+            arcpy.MakeFeatureLayer_management('point_watershed_output_line_fl', "point_wsh_min_dist", query_point_watershed)
+            point_start_wsh_list = ['point_wsh_min_dist', 'start_point']
+            arcpy.Merge_management(point_start_wsh_list, "point_start_wsh")
+            arcpy.management.PointsToLine('point_start_wsh', 'point_start_wsh_line')
+            merge_watershed_zone_line = ['point_start_wsh_line', 'dissolve_stream']
+            arcpy.Merge_management(merge_watershed_zone_line, "line_to_wsh_2")
+            arcpy.Dissolve_management('line_to_wsh_2', "line_to_wsh","", "", "SINGLE_PART", "DISSOLVE_LINES")
 
 
-            
+        arcpy.AddMessage('6 Point 25 ok')
+
+        arcpy.MakeFeatureLayer_management('point_25_degree_end', "25_degree")
+        arcpy.Merge_management(point_list_interest_point, "point_20_25_30") #"point_20_25_30"
+
+        arcpy.management.SplitLineAtPoint('line_to_wsh', 'point_20_25_30', "avalanche_path_component", "1 Meters") 
+        query_start = '"OBJECTID" = 1'
+        query_tranzit = '"OBJECTID" = 2'
+        query_runout = '"OBJECTID" = 3'
+        start_treck = arcpy.MakeFeatureLayer_management('avalanche_path_component', start_treck, query_start)
+        tranzit_treck = arcpy.MakeFeatureLayer_management('avalanche_path_component', tranzit_treck, query_tranzit)
+        arcpy.MakeFeatureLayer_management('avalanche_path_component', "runout_zone_after_30", query_runout)
+
+        len_path_comp_count = len([i[0] for i in arcpy.da.SearchCursor('avalanche_path_component', "OBJECTID")])
+
+        arcpy.AddMessage('7 Line zone ok')
 
 
 
+# ПРОДЛЯЕМ ЛИНИЮ 3ОНЫ ВЫХОДА, ЕСЛИ ОНА БОЛЬШЕ ТРИДЦАТИ ГРАДУСОВ
+        if len_path_comp_count == 4:
+            arcpy.FeatureVerticesToPoints_management(tranzit_treck, "start_end_point_tranzit", "BOTH_ENDS")
+            arcpy.management.AddGeometryAttributes('start_end_point_tranzit', "POINT_X_Y_Z_M","METERS")
+            arcpy.FeatureVerticesToPoints_management('runout_zone_after_30', "start_end_point_runout", "BOTH_ENDS")
+            arcpy.management.AddGeometryAttributes('start_end_point_runout', "POINT_X_Y_Z_M","METERS")
+
+            px_t = [k[0] for k in arcpy.da.SearchCursor('start_end_point_tranzit', "POINT_X")]
+            py_t = [k[0] for k in arcpy.da.SearchCursor('start_end_point_tranzit', "POINT_Y")]
+
+            px_r = [k[0] for k in arcpy.da.SearchCursor('start_end_point_runout', "POINT_X")][0]
+            py_r = [k[0] for k in arcpy.da.SearchCursor('start_end_point_runout', "POINT_Y")][0]
+
+            razn_tranzit_x = px_t[0] - px_t[1]
+            razn_tranzit_y = py_t[0] - py_t[1]
+
+            ro_x_t = abs(razn_tranzit_x)
+            ro_y_t = abs(razn_tranzit_y)
+
+            if razn_tranzit_x == 0:
+                angle_t = 0
+            if razn_tranzit_y == 0:
+                angle_t = 90
+            if razn_tranzit_x > 0 and razn_tranzit_y > 0:
+                tan_a = ro_x_t/ro_y_t
+                angle_t = math.degrees(math.atan(tan_a)) + 180
+            if razn_tranzit_x > 0 and razn_tranzit_y < 0:
+                tan_a = ro_x_t/ro_y_t
+                angle_t = 360 - math.degrees(math.atan(tan_a))
+            if razn_tranzit_x < 0 and razn_tranzit_y > 0:
+                tan_a = ro_x_t/ro_y_t
+                angle_t = 180 - math.degrees(math.atan(tan_a))
+            if razn_tranzit_x < 0 and razn_tranzit_y < 0:
+                tan_a = ro_x_t/ro_y_t
+                angle_t = math.degrees(math.atan(tan_a))
+
+            if angle_t > 0 and angle_t <= 90:
+                angle_len = 90 - angle_t
+                d_x = len_runout_after_30_degree *  math.cos(math.radians(angle_len))
+                d_y = len_runout_after_30_degree * math.sin(math.radians(angle_len))
+                x_new = px_r + d_x
+                y_new = py_r + d_y
+            if angle_t > 90 and angle_t <= 180:
+                angle_len = angle_t - 90
+                d_x = len_runout_after_30_degree *  math.cos(math.radians(angle_len))
+                d_y = len_runout_after_30_degree * math.sin(math.radians(angle_len))
+                x_new = px_r + d_x
+                y_new = py_r - d_y
+            if angle_t > 180 and angle_t <= 270:
+                angle_len = 270 - angle_t
+                d_x = len_runout_after_30_degree *  math.cos(math.radians(angle_len))
+                d_y = len_runout_after_30_degree * math.sin(math.radians(angle_len))
+                x_new = px_r - d_x
+                y_new = py_r - d_y
+            if angle_t > 270 and angle_t <= 360:
+                angle_len = angle_t - 270
+                d_x = len_runout_after_30_degree *  math.cos(math.radians(angle_len))
+                d_y = len_runout_after_30_degree * math.sin(math.radians(angle_len))
+                x_new = px_r - d_x
+                y_new = py_r + d_y
+            if angle_t == 0 and razn_tranzit_y > 0:
+                d_x = len_runout_after_30_degree *  math.cos(math.radians(angle_len))
+                d_y = len_runout_after_30_degree * math.sin(math.radians(angle_len))
+                x_new = px_r
+                y_new = py_r - d_y
+            if angle_t == 0 and razn_tranzit_y < 0:
+                d_x = len_runout_after_30_degree *  math.cos(math.radians(angle_len))
+                d_y = len_runout_after_30_degree * math.sin(math.radians(angle_len))
+                x_new = px_r
+                y_new = py_r + d_y
+            if angle_t == 90 and razn_tranzit_x > 0:
+                d_x = len_runout_after_30_degree *  math.cos(math.radians(angle_len))
+                d_y = len_runout_after_30_degree * math.sin(math.radians(angle_len))
+                x_new = px_r - d_x
+                y_new = py_r 
+            if angle_t == 90 and razn_tranzit_x < 0:
+                d_x = len_runout_after_30_degree *  math.cos(math.radians(angle_len))
+                d_y = len_runout_after_30_degree * math.sin(math.radians(angle_len))
+                x_new = px_r + d_x
+                y_new = py_r 
+
+            sr = arcpy.SpatialReference()
+            coord_syst_wkt = '%s' % coord_syst
+            sr.loadFromString(coord_syst_wkt)
+
+            pt = arcpy.Point(x_new, y_new)
+            pt_geometry = arcpy.PointGeometry(pt, sr)
+
+            point_ptr = arcpy.management.CreateFeatureclass("in_memory", "point_ptr", "POINT", "", "DISABLED", "DISABLED", spatial_reference=sr)
+            with arcpy.da.InsertCursor(point_ptr, ["SHAPE@"]) as cursor:
+                cursor.insertRow([pt_geometry])
+            arcpy.MakeFeatureLayer_management(point_ptr, "point_30_end")
+
+            arcpy.AddMessage('8 point 30 end ok')
+            point_runout_zone = ['30_degree', 'point_30_end']
+            arcpy.Merge_management(point_runout_zone, "point_runout_zone_st_end")
+            arcpy.management.PointsToLine('point_runout_zone_st_end', "runout_zone_line_after_30")
+            merge_runout_zone_line = ['runout_zone_after_30', 'runout_zone_line_after_30']
+            arcpy.Merge_management(merge_runout_zone_line, "runout_zone_line_with_30")
+            arcpy.Dissolve_management('runout_zone_line_with_30', "runout_zone_line","", "", "SINGLE_PART", "DISSOLVE_LINES")
+            runout_treck = arcpy.MakeFeatureLayer_management('runout_zone_line', runout_treck)
 
 
 
-        # Добавить удаление всех промежуточных слоев, сохранение промежуточных водораздела и пути не во временные?. Добавить месседжы, исправить названия в окне ввода.
-        # обрезать зз сверху по 25
-        # благовещенский определение лавинных нагрузок 62-63
+
+        # # Добавить удаление всех промежуточных слоев, сохранение промежуточных водораздела и пути не во временные?. Добавить месседжы, исправить названия в окне ввода.
+        # # благовещенский определение лавинных нагрузок 62-63
