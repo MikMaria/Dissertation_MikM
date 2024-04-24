@@ -1075,7 +1075,23 @@ class Reconstruction_of_watershades(object):
                                 objval_2 = row[1]
                                 break
                     query_line_2 = '"OBJECTID" = {0}'.format(objval_2)
-                    arcpy.MakeFeatureLayer_management('tranzit_track_i_all', "start_track_i", query_line_2)
+                    arcpy.MakeFeatureLayer_management('tranzit_track_i_all', "tranzit_track_i", query_line_2)
+                if i == (len(z_tranzit_track) - 1):
+                    query_1 = '"OBJECTID" = {0}'.format(i+1)
+                    arcpy.MakeFeatureLayer_management(tranzit_track, "tranzit_track_i_all", query_1)
+                    with arcpy.da.SearchCursor(tranzit_track, 'SHAPE@') as cur:
+                        for row in cur:
+                            coords_end = tuple((row[0].lastPoint.X, row[0].lastPoint.Y))
+                            break
+                    objval_2 = 0
+                    with arcpy.da.SearchCursor('tranzit_track_i_all', ['SHAPE@', 'OID@']) as cur_1:
+                        for row in cur_1:
+                            split_end = tuple((row[0].lastPoint.X, row[0].lastPoint.Y))
+                            if (coords_end == split_end):
+                                objval_2 = row[1]
+                                break
+                    query_line_2 = '"OBJECTID" = {0}'.format(objval_2)
+                    arcpy.MakeFeatureLayer_management('tranzit_track_i_all', "tranzit_track_i", query_line_2)
                 else:
                     query_1 = '"OBJECTID" = {0} AND "OBJECTID" = {1}'.format(i+1, i+2)
                     arcpy.MakeFeatureLayer_management(tranzit_track, "tranzit_track_i_all", query_1)
@@ -1095,6 +1111,7 @@ class Reconstruction_of_watershades(object):
                     query_line_2 = '"OBJECTID" = {0}'.format(objval_2)
                     arcpy.MakeFeatureLayer_management('tranzit_track_i_all', "tranzit_track_i", query_line_2)
                 arcpy.management.AddGeometryAttributes('tranzit_track_i', "LENGTH","METERS")
+
                 len_tranzit_i = [k[0] for k in arcpy.da.SearchCursor('tranzit_track_i', "LENGTH")][0]
                 len_tranzit_z_i = math.sqrt(len_tranzit_i**2 + razn_z_tranzit_i**2)
                 len_tranzuit_points.append(len_tranzit_z_i)
@@ -1122,6 +1139,22 @@ class Reconstruction_of_watershades(object):
                         for row in cur_1:
                             split_start = tuple((row[0].firstPoint.X, row[0].firstPoint.X))
                             if (coords_start == split_start):
+                                objval_2 = row[1]
+                                break
+                    query_line_2 = '"OBJECTID" = {0}'.format(objval_2)
+                    arcpy.MakeFeatureLayer_management('start_track_i_all', "start_track_i", query_line_2)
+                if i == (len(z_start_track) - 1):
+                    query_1 = '"OBJECTID" = {0}'.format(i+1)
+                    arcpy.MakeFeatureLayer_management(start_track, "start_track_i_all", query_1)
+                    with arcpy.da.SearchCursor(start_track, 'SHAPE@') as cur:
+                        for row in cur:
+                            coords_end = tuple((row[0].lastPoint.X, row[0].lastPoint.Y))
+                            break
+                    objval_2 = 0
+                    with arcpy.da.SearchCursor('start_track_i_all', ['SHAPE@', 'OID@']) as cur_1:
+                        for row in cur_1:
+                            split_end = tuple((row[0].lastPoint.X, row[0].lastPoint.Y))
+                            if (coords_end == split_end):
                                 objval_2 = row[1]
                                 break
                     query_line_2 = '"OBJECTID" = {0}'.format(objval_2)
