@@ -599,7 +599,7 @@ class Reconstruction_of_watershades(object):
             runout_track = arcpy.MakeFeatureLayer_management('runout_line_no_angle', runout_track)
 
 
-        arcpy.AddMessage('Point 30 ok')
+        arcpy.AddMessage('3. Point 30 ok')
             
 
 
@@ -664,7 +664,7 @@ class Reconstruction_of_watershades(object):
         query_area_poly = '"OBJECTID" = 1'
         watershed_output = arcpy.MakeFeatureLayer_management('watershed_intersect_sort', watershed_output, query_area_poly)
 
-        arcpy.AddMessage('Start zone polygon ok')
+        arcpy.AddMessage('4. Start zone polygon ok')
 
 
 
@@ -757,7 +757,7 @@ class Reconstruction_of_watershades(object):
         min_dist_20_tz = math.ceil(min(ro_20_zt_list) + cell_p/2)
         arcpy.edit.Snap('tranzit_zone_no_20_line', [['20_degree', "VERTEX",  min_dist_20_tz]])
         tranzit_zone_polygon = arcpy.management.FeatureToPolygon('tranzit_zone_no_20_line', tranzit_zone_polygon)
-        arcpy.AddMessage('Tranzit zone polygon ok')
+        arcpy.AddMessage('5. Tranzit zone polygon ok')
 
 
 
@@ -862,9 +862,7 @@ class Reconstruction_of_watershades(object):
         # если пересечений нет, то значит точка лежит выше полигона водораздела и мы должны найти точку пересечения
         arcpy.MakeFeatureLayer_management('start_25_fl', "start_point_inter")
         len_inter_0 = len([i[0] for i in arcpy.da.SearchCursor('start_point_inter', "OBJECTID")])
-        arcpy.AddMessage('len_inter_0 %s' %len_inter_0)
         if len_inter_0 == 1:
-            arcpy.AddMessage('if')
             # в случае, если точка лежит выше водораздела, то точкой пересечения с линией в 25 градусов считаем верхнюю из точек пересечения
             start_point_25 = [i[0] for i in arcpy.da.SearchCursor('intersect_point_25_sing', "OBJECTID")][-1]
             query_start_point_25 = '"OBJECTID" = {0}'.format(start_point_25)
@@ -874,8 +872,6 @@ class Reconstruction_of_watershades(object):
             arcpy.management.SplitLineAtPoint(aval_tranz_zone, 'point_25_degree', "line_25_degree", "1 Meters")
             arcpy.MakeFeatureLayer_management('dissolve_stream', "line_to_wsh")
         else:
-
-            arcpy.AddMessage('else')
             arcpy.management.SplitLineAtPoint(aval_tranz_zone, 'point_25_degree_end', "line_25_degree", "1 Meters")
             arcpy.management.AddGeometryAttributes('start_point', "POINT_X_Y_Z_M","METERS")
             arcpy.management.PolygonToLine(watershed_output, "watershed_output_line")
@@ -904,7 +900,7 @@ class Reconstruction_of_watershades(object):
             arcpy.Dissolve_management('line_to_wsh_2', "line_to_wsh","", "", "SINGLE_PART", "DISSOLVE_LINES")
 
 
-        arcpy.AddMessage('6 Point 25 ok')
+        arcpy.AddMessage('6. Point 25 ok')
 
         arcpy.MakeFeatureLayer_management('point_25_degree_end', "25_degree")
         arcpy.Merge_management(point_list_interest_point, "point_20_25_30") #"point_20_25_30"
@@ -919,7 +915,7 @@ class Reconstruction_of_watershades(object):
 
         len_path_comp_count = len([i[0] for i in arcpy.da.SearchCursor('avalanche_path_component', "OBJECTID")])
 
-        arcpy.AddMessage('7 Line zone ok')
+        arcpy.AddMessage('7. Line zone ok')
 
 
 
@@ -1016,7 +1012,7 @@ class Reconstruction_of_watershades(object):
                 cursor.insertRow([pt_geometry])
             arcpy.MakeFeatureLayer_management(point_ptr, "point_30_end")
 
-            arcpy.AddMessage('8 point 30 end ok')
+            arcpy.AddMessage('8. point 30 end ok')
             point_runout_zone = ['30_degree', 'point_30_end']
             arcpy.Merge_management(point_runout_zone, "point_runout_zone_st_end")
             arcpy.management.PointsToLine('point_runout_zone_st_end', "runout_zone_line_after_30")
@@ -1062,15 +1058,16 @@ class Reconstruction_of_watershades(object):
                 razn_z_tranzit_i = z_tranzit_track[i] -  z_tranzit_track[i+1]
                 if i == 0:
                     query_1 = '"OBJECTID" = {0}'.format(i+1)
-                    arcpy.MakeFeatureLayer_management(tranzit_track, "tranzit_track_i_all", query_1)
+                    arcpy.MakeFeatureLayer_management('tranzit_track_point_val', "tranzit_track_i_all_point", query_1)
+                    arcpy.management.SplitLineAtPoint(tranzit_track, 'tranzit_track_i_all_point', "tranzit_track_i_all", "1 Meters")
                     with arcpy.da.SearchCursor(tranzit_track, 'SHAPE@') as cur:
                         for row in cur:
-                            coords_start = tuple((row[0].firstPoint.X, row[0].firstPoint.X))
+                            coords_start = tuple((row[0].firstPoint.X, row[0].firstPoint.Y))
                             break
                     objval_2 = 0
                     with arcpy.da.SearchCursor('tranzit_track_i_all', ['SHAPE@', 'OID@']) as cur_1:
                         for row in cur_1:
-                            split_start = tuple((row[0].firstPoint.X, row[0].firstPoint.X))
+                            split_start = tuple((row[0].firstPoint.X, row[0].firstPoint.Y))
                             if (coords_start == split_start):
                                 objval_2 = row[1]
                                 break
@@ -1078,7 +1075,8 @@ class Reconstruction_of_watershades(object):
                     arcpy.MakeFeatureLayer_management('tranzit_track_i_all', "tranzit_track_i", query_line_2)
                 if i == (len(z_tranzit_track) - 1):
                     query_1 = '"OBJECTID" = {0}'.format(i+1)
-                    arcpy.MakeFeatureLayer_management(tranzit_track, "tranzit_track_i_all", query_1)
+                    arcpy.MakeFeatureLayer_management('tranzit_track_point_val', "tranzit_track_i_all_point", query_1)
+                    arcpy.management.SplitLineAtPoint(tranzit_track, 'tranzit_track_i_all_point', "tranzit_track_i_all", "1 Meters")
                     with arcpy.da.SearchCursor(tranzit_track, 'SHAPE@') as cur:
                         for row in cur:
                             coords_end = tuple((row[0].lastPoint.X, row[0].lastPoint.Y))
@@ -1094,30 +1092,31 @@ class Reconstruction_of_watershades(object):
                     arcpy.MakeFeatureLayer_management('tranzit_track_i_all', "tranzit_track_i", query_line_2)
                 else:
                     query_1 = '"OBJECTID" = {0} AND "OBJECTID" = {1}'.format(i+1, i+2)
-                    arcpy.MakeFeatureLayer_management(tranzit_track, "tranzit_track_i_all", query_1)
+                    arcpy.MakeFeatureLayer_management('tranzit_track_point_val', "tranzit_track_i_all_point", query_1)
+                    arcpy.management.SplitLineAtPoint(tranzit_track, 'tranzit_track_i_all_point', "tranzit_track_i_all", "1 Meters")
                     with arcpy.da.SearchCursor(tranzit_track, 'SHAPE@') as cur:
                         for row in cur:
                             coords_end = tuple((row[0].lastPoint.X, row[0].lastPoint.Y))
-                            coords_start = tuple((row[0].firstPoint.X, row[0].firstPoint.X))
+                            coords_start = tuple((row[0].firstPoint.X, row[0].firstPoint.Y))
                             break
                     objval_2 = 0
                     with arcpy.da.SearchCursor('tranzit_track_i_all', ['SHAPE@', 'OID@']) as cur_1:
                         for row in cur_1:
-                            split_start = tuple((row[0].firstPoint.X, row[0].firstPoint.X))
+                            split_start = tuple((row[0].firstPoint.X, row[0].firstPoint.Y))
                             split_end = tuple((row[0].lastPoint.X, row[0].lastPoint.Y))
                             if (coords_start != split_start and coords_end != split_end):
                                 objval_2 = row[1]
                                 break
                     query_line_2 = '"OBJECTID" = {0}'.format(objval_2)
                     arcpy.MakeFeatureLayer_management('tranzit_track_i_all', "tranzit_track_i", query_line_2)
-                arcpy.management.AddGeometryAttributes('tranzit_track_i', "LENGTH","METERS")
 
+                arcpy.management.AddGeometryAttributes('tranzit_track_i', "LENGTH","METERS")
                 len_tranzit_i = [k[0] for k in arcpy.da.SearchCursor('tranzit_track_i', "LENGTH")][0]
                 len_tranzit_z_i = math.sqrt(len_tranzit_i**2 + razn_z_tranzit_i**2)
                 len_tranzuit_points.append(len_tranzit_z_i)
-            len_tranzit = 0
-            for i in range(len(len_tranzuit_points)):
-                len_tranzit += len_tranzuit_points[i]
+            arcpy.AddMessage('len_tranzuit_points %s'%len_tranzuit_points)
+
+            len_tranzit = sum(len_tranzuit_points)
 
 # ПОИСК НАКЛОННОЙ ДЛИНЫ ЛИНИИ ЗОНЫ ЗАРОЖДЕНИЯ
             arcpy.edit.Densify(start_track, "DISTANCE", cell_p)
@@ -1129,15 +1128,16 @@ class Reconstruction_of_watershades(object):
                 razn_z_start_i = z_start_track[i] -  z_start_track[i+1]
                 if i == 0:
                     query_1 = '"OBJECTID" = {0}'.format(i+1)
-                    arcpy.MakeFeatureLayer_management(start_track, "start_track_i_all", query_1)
+                    arcpy.MakeFeatureLayer_management('start_track_point_val', "start_track_i_all_point", query_1)
+                    arcpy.management.SplitLineAtPoint(start_track, 'start_track_i_all_point', "start_track_i_all", "1 Meters")
                     with arcpy.da.SearchCursor(start_track, 'SHAPE@') as cur:
                         for row in cur:
-                            coords_start = tuple((row[0].firstPoint.X, row[0].firstPoint.X))
+                            coords_start = tuple((row[0].firstPoint.X, row[0].firstPoint.Y))
                             break
                     objval_2 = 0
                     with arcpy.da.SearchCursor('start_track_i_all', ['SHAPE@', 'OID@']) as cur_1:
                         for row in cur_1:
-                            split_start = tuple((row[0].firstPoint.X, row[0].firstPoint.X))
+                            split_start = tuple((row[0].firstPoint.X, row[0].firstPoint.Y))
                             if (coords_start == split_start):
                                 objval_2 = row[1]
                                 break
@@ -1145,7 +1145,8 @@ class Reconstruction_of_watershades(object):
                     arcpy.MakeFeatureLayer_management('start_track_i_all', "start_track_i", query_line_2)
                 if i == (len(z_start_track) - 1):
                     query_1 = '"OBJECTID" = {0}'.format(i+1)
-                    arcpy.MakeFeatureLayer_management(start_track, "start_track_i_all", query_1)
+                    arcpy.MakeFeatureLayer_management('start_track_point_val', "start_track_i_all_point", query_1)
+                    arcpy.management.SplitLineAtPoint(start_track, 'start_track_i_all_point', "start_track_i_all", "1 Meters")
                     with arcpy.da.SearchCursor(start_track, 'SHAPE@') as cur:
                         for row in cur:
                             coords_end = tuple((row[0].lastPoint.X, row[0].lastPoint.Y))
@@ -1161,16 +1162,17 @@ class Reconstruction_of_watershades(object):
                     arcpy.MakeFeatureLayer_management('start_track_i_all', "start_track_i", query_line_2)
                 else:
                     query_1 = '"OBJECTID" = {0} AND "OBJECTID" = {1}'.format(i+1, i+2)
-                    arcpy.MakeFeatureLayer_management(start_track, "start_track_i_all", query_1)
+                    arcpy.MakeFeatureLayer_management('start_track_point_val', "start_track_i_all_point", query_1)
+                    arcpy.management.SplitLineAtPoint(start_track, 'start_track_i_all_point', "start_track_i_all", "1 Meters")
                     with arcpy.da.SearchCursor(start_track, 'SHAPE@') as cur:
                         for row in cur:
                             coords_end = tuple((row[0].lastPoint.X, row[0].lastPoint.Y))
-                            coords_start = tuple((row[0].firstPoint.X, row[0].firstPoint.X))
+                            coords_start = tuple((row[0].firstPoint.X, row[0].firstPoint.Y))
                             break
                     objval_2 = 0
                     with arcpy.da.SearchCursor('start_track_i_all', ['SHAPE@', 'OID@']) as cur_1:
                         for row in cur_1:
-                            split_start = tuple((row[0].firstPoint.X, row[0].firstPoint.X))
+                            split_start = tuple((row[0].firstPoint.X, row[0].firstPoint.Y))
                             split_end = tuple((row[0].lastPoint.X, row[0].lastPoint.Y))
                             if (coords_start != split_start and coords_end != split_end):
                                 objval_2 = row[1]
@@ -1222,7 +1224,7 @@ class Reconstruction_of_watershades(object):
                     objval_2 = 0
                     with arcpy.da.SearchCursor('splitted_fclass_runout', ['SHAPE@', 'OID@']) as cur_1:
                         for row in cur_1:
-                            split_start = tuple((row[0].firstPoint.X, row[0].firstPoint.X))
+                            split_start = tuple((row[0].firstPoint.X, row[0].firstPoint.Y))
                             if (coords_end == split_start):
                                 objval_2 = row[1]
                                 break
