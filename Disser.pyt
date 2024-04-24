@@ -1053,6 +1053,23 @@ class Reconstruction_of_watershades(object):
 # ПОИСК ТОЧКИ ОКОНЧАНИЯ
             
 # ПОИСК НАКЛОННОЙ ДЛИНЫ ЛИНИИ ЗОНЫ ТРАНЗИТА
+            def make_tuple(row, return_type):
+                if return_type == 'start':
+                    return tuple((row[0].firstPoint.X, row[0].firstPoint.Y))
+                else:
+                    return tuple((row[0].lastPoint.X, row[0].lastPoint.Y))
+                
+            def first_point_tuple(ptr_d, selector_val):
+                if selector_val == 'fp':
+                    return tuple((arcpy.da.SearchCursor(ptr_d, ("SHAPE@",)).next()[0].firstPoint.X, 
+                                            arcpy.da.SearchCursor(ptr_d, ("SHAPE@",)).next()[0].firstPoint.Y))
+                else:
+                    return tuple((arcpy.da.SearchCursor(ptr_d, ("SHAPE@",)).next()[0].lastPoint.X, 
+                                            arcpy.da.SearchCursor(ptr_d, ("SHAPE@",)).next()[0].lastPoint.Y))
+            
+            in_fc = ['SHAPE@', 'OID@']
+            len_tranzit = 0
+
             arcpy.edit.Densify(tranzit_track, "DISTANCE", cell_p)
             arcpy.FeatureVerticesToPoints_management(tranzit_track, "tranzit_track_point", "ALL")
             arcpy.sa.ExtractValuesToPoints('tranzit_track_point', DEM_fill, "tranzit_track_point_val")
@@ -1061,63 +1078,40 @@ class Reconstruction_of_watershades(object):
             for i in range(len(z_tranzit_track) - 1):
                 razn_z_tranzit_i = z_tranzit_track[i] -  z_tranzit_track[i+1]
                 if i == 0:
-                    query_1 = '"OBJECTID" = {0}'.format(i+1)
-                    arcpy.MakeFeatureLayer_management(tranzit_track, "tranzit_track_i_all", query_1)
-                    with arcpy.da.SearchCursor(tranzit_track, 'SHAPE@') as cur:
-                        for row in cur:
-                            coords_start = tuple((row[0].firstPoint.X, row[0].firstPoint.X))
-                            break
-                    objval_2 = 0
-                    with arcpy.da.SearchCursor('tranzit_track_i_all', ['SHAPE@', 'OID@']) as cur_1:
-                        for row in cur_1:
-                            split_start = tuple((row[0].firstPoint.X, row[0].firstPoint.X))
-                            if (coords_start == split_start):
-                                objval_2 = row[1]
-                                break
+                    arcpy.MakeFeatureLayer_management(tranzit_track, "tranzit_track_i_all", '"OBJECTID" = {0}'.format(i+1))
+                    coords_start = first_point_tuple(tranzit_track, 'fp')
+                    
+                    all_tranzit = [tuple((row[0], row[1])) for row in arcpy.da.SearchCursor('tranzit_track_i_all', in_fc)]
+                    objval_2 = [i for i in list(map(lambda row: row[1][1] if make_tuple(row[0], 'start') == coords_start else None, all_tranzit)) if i is not None][0] 
                     query_line_2 = '"OBJECTID" = {0}'.format(objval_2)
                     arcpy.MakeFeatureLayer_management('tranzit_track_i_all', "tranzit_track_i", query_line_2)
                 if i == (len(z_tranzit_track) - 1):
-                    query_1 = '"OBJECTID" = {0}'.format(i+1)
-                    arcpy.MakeFeatureLayer_management(tranzit_track, "tranzit_track_i_all", query_1)
-                    with arcpy.da.SearchCursor(tranzit_track, 'SHAPE@') as cur:
-                        for row in cur:
-                            coords_end = tuple((row[0].lastPoint.X, row[0].lastPoint.Y))
-                            break
-                    objval_2 = 0
-                    with arcpy.da.SearchCursor('tranzit_track_i_all', ['SHAPE@', 'OID@']) as cur_1:
-                        for row in cur_1:
-                            split_end = tuple((row[0].lastPoint.X, row[0].lastPoint.Y))
-                            if (coords_end == split_end):
-                                objval_2 = row[1]
-                                break
+                    arcpy.MakeFeatureLayer_management(tranzit_track, "tranzit_track_i_all", '"OBJECTID" = {0}'.format(i+1))
+                    coords_end = first_point_tuple(tranzit_track, 'lp')
+
+                    all_tranzit = [tuple((row[0], row[1])) for row in arcpy.da.SearchCursor('tranzit_track_i_all', in_fc)]
+                    objval_2 = [i for i in list(map(lambda row: row[1][1] if make_tuple(row[0], 'last') == coords_end 
+                                                    else None, all_tranzit)) if i is not None][0] 
                     query_line_2 = '"OBJECTID" = {0}'.format(objval_2)
                     arcpy.MakeFeatureLayer_management('tranzit_track_i_all', "tranzit_track_i", query_line_2)
                 else:
                     query_1 = '"OBJECTID" = {0} AND "OBJECTID" = {1}'.format(i+1, i+2)
                     arcpy.MakeFeatureLayer_management(tranzit_track, "tranzit_track_i_all", query_1)
-                    with arcpy.da.SearchCursor(tranzit_track, 'SHAPE@') as cur:
-                        for row in cur:
-                            coords_end = tuple((row[0].lastPoint.X, row[0].lastPoint.Y))
-                            coords_start = tuple((row[0].firstPoint.X, row[0].firstPoint.X))
-                            break
-                    objval_2 = 0
-                    with arcpy.da.SearchCursor('tranzit_track_i_all', ['SHAPE@', 'OID@']) as cur_1:
-                        for row in cur_1:
-                            split_start = tuple((row[0].firstPoint.X, row[0].firstPoint.X))
-                            split_end = tuple((row[0].lastPoint.X, row[0].lastPoint.Y))
-                            if (coords_start != split_start and coords_end != split_end):
-                                objval_2 = row[1]
-                                break
+                    coords_start = first_point_tuple(tranzit_track, 'fp')
+                    coords_end = first_point_tuple(tranzit_track, 'lp')
+
+                    all_tranzit = [tuple((row[0], row[1])) for row in arcpy.da.SearchCursor('tranzit_track_i_all', in_fc)]
+                    objval_2 = [i for i in list(map(lambda row: row[1][1] if 
+                                                    (make_tuple(row[0], 'start') == coords_start and make_tuple(row[0], 'last') == coords_end) 
+                                                        else None, all_tranzit)) if i is not None][0] 
+
                     query_line_2 = '"OBJECTID" = {0}'.format(objval_2)
                     arcpy.MakeFeatureLayer_management('tranzit_track_i_all', "tranzit_track_i", query_line_2)
                 arcpy.management.AddGeometryAttributes('tranzit_track_i', "LENGTH","METERS")
 
                 len_tranzit_i = [k[0] for k in arcpy.da.SearchCursor('tranzit_track_i', "LENGTH")][0]
-                len_tranzit_z_i = math.sqrt(len_tranzit_i**2 + razn_z_tranzit_i**2)
-                len_tranzuit_points.append(len_tranzit_z_i)
-            len_tranzit = 0
-            for i in range(len(len_tranzuit_points)):
-                len_tranzit += len_tranzuit_points[i]
+                len_tranzit += math.sqrt(len_tranzit_i**2 + razn_z_tranzit_i**2)
+
 
 # ПОИСК НАКЛОННОЙ ДЛИНЫ ЛИНИИ ЗОНЫ ЗАРОЖДЕНИЯ
             arcpy.edit.Densify(start_track, "DISTANCE", cell_p)
