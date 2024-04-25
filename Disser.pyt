@@ -1,5 +1,6 @@
 import arcpy
 import math
+import os
 
 class Toolbox(object):
     def __init__(self):
@@ -217,21 +218,6 @@ class Reconstruction_of_watershades(object):
             parameterType="Optional",
             direction="Output")        
 
-        
-        out_stream_links = arcpy.Parameter(
-            displayName="Output Stream",
-            name="out_stream_links",
-            datatype="GPFeatureLayer",
-            parameterType="Optional",
-            direction="Output")
-        
-        point_output = arcpy.Parameter(
-            displayName="point_output",
-            name="point_output",
-            datatype="GPFeatureLayer",
-            parameterType="Optional",
-            direction="Output")
-        
         aval_tranz_zone = arcpy.Parameter(
             displayName="aval_tranz_zone",
             name="aval_tranz_zone",
@@ -247,7 +233,7 @@ class Reconstruction_of_watershades(object):
                       watershed_output, tranzit_zone_polygon, runout_polygon,
                       start_track, tranzit_track, runout_track,
                       
-                      aval_tranz_zone, out_stream_links, point_output
+                      aval_tranz_zone
                       ]
         
         return parameters
@@ -305,7 +291,8 @@ class Reconstruction_of_watershades(object):
         for i in c_list:
             arcpy.Delete_management(i)
 
-        arcpy.AddMessage('parameters[6] %s' %parameters[6])
+
+        
 
 
 
@@ -919,7 +906,6 @@ class Reconstruction_of_watershades(object):
         arcpy.AddMessage('7. Line start and tranzit zone ok')
 
 
-
 # ПРОДЛЯЕМ ЛИНИЮ 3ОНЫ ВЫХОДА, ЕСЛИ ОНА БОЛЬШЕ ТРИДЦАТИ ГРАДУСОВ
         if len_path_comp_count == 4:
             arcpy.FeatureVerticesToPoints_management(start_track, "start_end_point_tranzit", "BOTH_ENDS")
@@ -1208,8 +1194,9 @@ class Reconstruction_of_watershades(object):
                 sum += slope_tranzit_zone[i]
             median_slope_tranzit = sum/len(slope_tranzit_zone)
 
-            arcpy.management.SplitLineAtPoint('dens_copy_1', '20_degree', "split_line_tranz_start", "1 Meters")
-            arcpy.edit.Densify('split_line_tranz_start', "DISTANCE", cell_p)
+            merge_list_start_tranz = [start_track, tranzit_track]
+            arcpy.Merge_management(merge_list_start_tranz, "start_tranzit_line")
+            arcpy.edit.Densify('start_tranzit_line', "DISTANCE", cell_p)
             arcpy.FeatureVerticesToPoints_management('split_line_tranz_start', "split_line_tranz_start_point", "ALL")
             arcpy.sa.ExtractValuesToPoints('split_line_tranz_start_point', slope_degree, "split_line_tranz_start_point_slope")
             slope_tranzit_start_zone = [k[0] for k in arcpy.da.SearchCursor('split_line_tranz_start_point_slope', "RASTERVALU")]
