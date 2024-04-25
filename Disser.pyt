@@ -305,6 +305,8 @@ class Reconstruction_of_watershades(object):
         for i in c_list:
             arcpy.Delete_management(i)
 
+        arcpy.AddMessage('parameters[6] %s' %parameters[6])
+
 
 
 # Этап 1. ПОИСК ТОЧКИ В 20 ГРАДУСОВ
@@ -1159,7 +1161,7 @@ class Reconstruction_of_watershades(object):
             lb_25 = len_start
             Z_25 = Hb_25 - (H/L)*lb_25
             v_25 = math.sqrt(2*9.8*Z_25)
-            arcpy.AddMessage('Avalance speed in point 25 degree %s m/s' %v_25)
+
 
 #ПОИСК ЗНАЧЕНИЯ СКОРОСТИ ЛАВИНЫ ДЛЯ ТОЧКИ В КОНЦЕ ЗОНЫ ТРАНЗИТА
             z_20_point = [k[0] for k in arcpy.da.SearchCursor('20_degree', "RASTERVALU")][0]
@@ -1167,16 +1169,91 @@ class Reconstruction_of_watershades(object):
             lb_20 = len_start + len_tranzit
             Z_20 = Hb_20 - (H/L)*lb_20
             v_20 = math.sqrt(2*9.8*Z_20)
-            arcpy.AddMessage('Avalance speed in point 20 degree %s m/s' %v_20)
+
+
+# ПОДГОТОВКА ДАННЫХ ДЛЯ ЗАПИСИ В ТЕКСТОРВЫЙ ФАЙЛ
+            coords_start_x = px_t[0]
+            coords_start_y = py_t[0]
+
+            arcpy.management.AddGeometryAttributes('25_degree', "POINT_X_Y_Z_M","METERS")
+            coords_25_x = [k[0] for k in arcpy.da.SearchCursor('25_degree', "POINT_X")][0]
+            coords_25_y = [k[0] for k in arcpy.da.SearchCursor('25_degree', "POINT_Y")][0]
+
+            arcpy.management.AddGeometryAttributes('20_degree', "POINT_X_Y_Z_M","METERS")
+            coords_25_x = [k[0] for k in arcpy.da.SearchCursor('25_degree', "POINT_X")][0]
+            coords_25_y = [k[0] for k in arcpy.da.SearchCursor('25_degree', "POINT_Y")][0]
+
+            coords_20_x = px_20
+            coords_20_y = py_20
+
+            arcpy.management.AddGeometryAttributes('point_avalance_end', "POINT_X_Y_Z_M","METERS")
+            coords_end_x = [k[0] for k in arcpy.da.SearchCursor('point_avalance_end', "POINT_X")][0]
+            coords_end_y = [k[0] for k in arcpy.da.SearchCursor('point_avalance_end', "POINT_Y")][0]
+
+            arcpy.management.AddGeometryAttributes(watershed_output, "AREA", "", "SQUARE_METERS")
+            area_start_zone = [k[0] for k in arcpy.da.SearchCursor(watershed_output, "POLY_AREA")][0]
+
+            arcpy.management.AddGeometryAttributes(tranzit_zone_polygon, "AREA", "", "SQUARE_METERS")
+            area_tranzit_zone = [k[0] for k in arcpy.da.SearchCursor(tranzit_zone_polygon, "POLY_AREA")][0]
+
+            arcpy.management.AddGeometryAttributes(runout_polygon, "AREA", "", "SQUARE_METERS")
+            area_runout_zone = [k[0] for k in arcpy.da.SearchCursor(runout_polygon, "POLY_AREA")][0]
+
+            arcpy.edit.Densify(tranzit_track, "DISTANCE", cell_p)
+            arcpy.FeatureVerticesToPoints_management(tranzit_track, "tranzit_track_point_1", "ALL")
+            arcpy.sa.ExtractValuesToPoints('tranzit_track_point_1', slope_degree, "tranzit_track_point_1_slope")
+            slope_tranzit_zone = [k[0] for k in arcpy.da.SearchCursor('tranzit_track_point_1_slope', "RASTERVALU")]
+            sum = 0
+            for i in range(len(slope_tranzit_zone)):
+                sum += slope_tranzit_zone[i]
+            median_slope_tranzit = sum/len(slope_tranzit_zone)
+
+            arcpy.management.SplitLineAtPoint('dens_copy_1', '20_degree', "split_line_tranz_start", "1 Meters")
+            arcpy.edit.Densify('split_line_tranz_start', "DISTANCE", cell_p)
+            arcpy.FeatureVerticesToPoints_management('split_line_tranz_start', "split_line_tranz_start_point", "ALL")
+            arcpy.sa.ExtractValuesToPoints('split_line_tranz_start_point', slope_degree, "split_line_tranz_start_point_slope")
+            slope_tranzit_start_zone = [k[0] for k in arcpy.da.SearchCursor('split_line_tranz_start_point_slope', "RASTERVALU")]
+            sum = 0
+            for i in range(len(slope_tranzit_start_zone)):
+                sum += slope_tranzit_start_zone[i]
+            median_slope_tranzit_start = sum/len(slope_tranzit_start_zone)
+
+            
+            
             
 
 #СОЗДАНИЕ ТЕКСТОВОГО ФАЙЛА СОДЕРЖАЩЕГО ОСНОВНЫЕ ПАРАМЕТРЫ ЛАВИНЫ
-            output_text_file = "r'%s'"%output_text
-            arcpy.AddMessage('%s' %output_text_file)
-            test_file = open(output_text_file,'r')
-            # file_object = open(text_file_object, 'a')
-            # file_object.write('hello')
-            test_file.write('hello')
+            with open(output_text, "w") as file:
+                file.write('Initial data: \n Pixel size {0} m \n Snow height {1} mm \n\n'.format(cell_p, snow_height))
+
+                file.write('Data received: \nStart point coordinates: X - {0}; Y - {1}; Z - {2}; \n'.format(coords_start_x,coords_start_y,z_start_point))
+                file.write('Coordinates of the end point of the start zone: X - {0}; Y - {1}; Z - {2}; \n'.format(coords_25_x,coords_25_y,z_25_point))
+                file.write('Coordinates of the end point of the tranzit zone: X - {0}; Y - {1}; Z - {2}; \n'.format(coords_20_x,coords_20_y,z_20_point))
+                file.write('Coordinates of the end point of the runout zone: X - {0}; Y - {1}; Z - {2}; \n\n'.format(coords_end_x,coords_end_y,z_end_point))
+
+                file.write('Start line length: {0} m \n'.format(len_start))
+                file.write('Tranzit line length: {0} m \n'.format(len_tranzit))
+                file.write('Runout line length: {0} m \n\n'.format(len_runout))
+
+                file.write('Start zone area: {0} m^2 \n'.format(area_start_zone))
+                file.write('Tranzit zone area: {0} m^2 \n'.format(area_tranzit_zone))
+                file.write('Runouth zone area: {0} m^2 \n\n'.format(area_runout_zone))
+
+                file.write('Average slope along the starting line: {0} ° \n'.format(median_slope))
+                file.write('Average slope along the transit line: {0} ° \n'.format(median_slope_tranzit))
+                file.write('Average slope along the start line and transit line: {0} ° \n\n'.format(median_slope_tranzit_start))
+
+                file.write('Speed at the end of the starting zone: {0} m/s \n'.format(v_25))
+                file.write('Speed at the end of the tranzit zone: {0} m/s \n'.format(v_20))
+
+                file.write('Total line length: {0} m \n'.format(L))
+                file.write('Total elevation difference: {0} m \n'.format(H))
+
+
+#  ЗАПИСЬ ИЗ ВРЕМЕННЫХ СЛОЕВ В ПОСТОЯННЫЕ
+                
+
+
             
 
 
