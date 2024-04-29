@@ -29,9 +29,24 @@ class Reconstruction_of_watercourses(object):
             parameterType="Required",
             direction="Output")
         
+        help_1 = arcpy.Parameter(
+            displayName="help_1",
+            name="help_1",
+            datatype="GPFeatureLayer",
+            parameterType="Optional",
+            direction="Output")  
+        
+        help_2 = arcpy.Parameter(
+            displayName="help_2",
+            name="help_2",
+            datatype="GPFeatureLayer",
+            parameterType="Optional",
+            direction="Output") 
+        
 
         parameters = [DEM_input, 
-                      out_stream_links]
+                      out_stream_links,
+                      help_1, help_2]
         
         return parameters
     
@@ -54,6 +69,8 @@ class Reconstruction_of_watercourses(object):
         """The source code of the tool."""
         DEM_input = parameters[0].valueAsText
         out_stream_links = parameters[1].valueAsText
+        help_1  = parameters[2].valueAsText
+        help_2  = parameters[3].valueAsText
 
         # Подготовительный этап. Установка параметров среды: экстент, маска, размер ячейки на основе данных с ЦМР
         arcpy.env.overwriteOutput = True
@@ -90,6 +107,7 @@ class Reconstruction_of_watercourses(object):
 
         #Этап 6. Объединение водотоков одного порядка
         arcpy.Dissolve_management('stream_links', "stream_dissolve", ["grid_code"], "", "SINGLE_PART", "DISSOLVE_LINES")
+
 
         #Этап 7. Разделение водотоков по точка пересечения (разделение v-образных вершин)
         fc_list = []
@@ -296,14 +314,16 @@ class Reconstruction_of_watershades(object):
         cell_x = arcpy.GetRasterProperties_management(DEM_input, "CELLSIZEX").getOutput(0)
         cell_y = arcpy.GetRasterProperties_management(DEM_input, "CELLSIZEY").getOutput(0)
         cell_area = float(cell_x.replace(',','.')) * float(cell_y.replace(',','.'))  
-        cell_p = int(cell_x)
+        cell_x_f = float(cell_x.replace(',','.'))
 
-        # fc_list = arcpy.ListDatasets()
-        # for fc in fc_list:
-        #     arcpy.Delete_management(fc)
-        # c_list = arcpy.ListFeatureClasses() 
-        # for i in c_list:
-        #     arcpy.Delete_management(i)
+        cell_p = math.ceil(cell_x_f)
+
+        fc_list = arcpy.ListDatasets()
+        for fc in fc_list:
+            arcpy.Delete_management(fc)
+        c_list = arcpy.ListFeatureClasses() 
+        for i in c_list:
+            arcpy.Delete_management(i)
 
         
 # Этап 1. ПОИСК ТОЧКИ В 20 ГРАДУСОВ
@@ -330,6 +350,8 @@ class Reconstruction_of_watershades(object):
             arcpy.AddMessage('1. No flip line')
         # 1.7. создание копии единой линии. Это необходимо для того, чтобы загустить вершины по размеру ячейки ЦМР 
         arcpy.management.Copy('dissolve_stream', "dens_copy")
+
+
 
         # 2.1.уплотнение исходной линии в соответствии с размером ячейки (необходимо для извлечения углов наклона из каждой ячейки)
         densify_line = arcpy.edit.Densify('dens_copy', "DISTANCE", cell_x)
@@ -668,28 +690,26 @@ class Reconstruction_of_watershades(object):
         inter_point =  []
 
         arcpy.management.AddGeometryAttributes('intersect_point_25_sing', "POINT_X_Y_Z_M","METERS")
-        px_i_25 = [i[0] for i in arcpy.da.SearchCursor('intersect_point_25_sing', "POINT_X")]
-        py_i_25 = [i[0] for i in arcpy.da.SearchCursor('intersect_point_25_sing', "POINT_Y")]
+        px_i_25 = [i[0] for i in arcpy.da.SearchCursor('intersect_point_25_sing', "POINT_X")][-1]
+        py_i_25 = [i[0] for i in arcpy.da.SearchCursor('intersect_point_25_sing', "POINT_Y")][-1]
 
         arcpy.FeatureVerticesToPoints_management(aval_tranz_zone_flip, "start_end_point_fl", "BOTH_ENDS")
         arcpy.management.AddGeometryAttributes('start_end_point_fl', "POINT_X_Y_Z_M","METERS")
         px_af = [i[0] for i in arcpy.da.SearchCursor('intersect_point_25_sing', "POINT_X")][-1]
         py_af = [i[0] for i in arcpy.da.SearchCursor('intersect_point_25_sing', "POINT_Y")][-1]
 
-        for p in range(len(px_i_25)):
-            if (px_i_25[p] != px_af and py_i_25[p] != py_af):
-                id_point = inter_point_1[p]
-                inter_point.append(id_point)
-            else:
-                query_start = '"OBJECTID" = {0}'.format(inter_point_1[p])
-                arcpy.MakeFeatureLayer_management('intersect_point_25_sing', "start_point_25", query_start)
-                len_start_25 = [i[0] for i in arcpy.da.SearchCursor('start_point_25', "OBJECTID")]
-
+        if (px_i_25 != px_af and py_i_25 != py_af):
+            inter_point = inter_point_1
+        else:
+            for i in range (len(inter_point_1)-1):
+                inter_point.append(inter_point_1[i])
 
 
         if len(inter_point) == 1:
             query_point_25 = '"OBJECTID" = 1'
             arcpy.MakeFeatureLayer_management('intersect_point_25_sing', "point_25_degree_end", query_point_25)
+            arcpy.management.SplitLineAtPoint('dissolve_stream', 'point_25_degree_end', "line_25_degree", "1 Meters")
+            arcpy.MakeFeatureLayer_management('line_25_degree', "line_to_wsh")
         else:
             # начинаем проходить по списку 
             for i in range(len(inter_point)):
@@ -746,17 +766,18 @@ class Reconstruction_of_watershades(object):
                     point_list.append(point_i)
             
 
-            # создаем единый массив точек
+                # создаем единый массив точек
             arcpy.Merge_management(point_list, "point_intersect_len")
+
+           
             # смотрим на длину массива
             count_line_i = [k[0] for k in arcpy.da.SearchCursor('point_intersect_len', "OBJECTID")]
-            query_point_25 = '"OBJECTID" = {0}'.format(count_line_i[0])
+            query_point_25 = '"OBJECTID" = {0}'.format(count_line_i[-1])
             # находим точку перегиба 
             arcpy.MakeFeatureLayer_management('point_intersect_len', "point_25_degree_end", query_point_25)
 
         # дальше смотрим на то, нет ли пересечений сверху и если есть, то выделяем его
         # находим верхнюю точку НЕ перевернутой линии
-        if len_start_25 == 0:
             arcpy.FeatureVerticesToPoints_management('aval_tranz_zone', "start_end_point", "BOTH_ENDS")
             arcpy.sa.ExtractValuesToPoints('start_end_point', DEM_fill, "start_end_point_xyz")
             s_e_points = [i[0] for i in arcpy.da.SearchCursor('start_end_point_xyz', "RASTERVALU")]
@@ -774,18 +795,36 @@ class Reconstruction_of_watershades(object):
             # если пересечений нет, то значит точка лежит выше полигона водораздела и мы должны найти точку пересечения
             arcpy.MakeFeatureLayer_management('start_25_fl', "start_point_inter")
             len_inter_0 = len([i[0] for i in arcpy.da.SearchCursor('start_point_inter', "OBJECTID")])
+
             if len_inter_0 == 1:
                 # в случае, если точка лежит выше водораздела, то точкой пересечения с линией в 25 градусов считаем верхнюю из точек пересечения
-                start_point_25 = [i[0] for i in arcpy.da.SearchCursor('intersect_point_25_sing', "OBJECTID")][-1]
+                start_point_25 = [i[0] for i in arcpy.da.SearchCursor('intersect_point_25_sing', "OBJECTID")][0]
                 query_start_point_25 = '"OBJECTID" = {0}'.format(start_point_25)
                 arcpy.MakeFeatureLayer_management('intersect_point_25_sing', "point_25_degree_start", query_start_point_25) #point_25_degree_start
-                point_start_end = ["point_25_degree_end", 'point_25_degree_start']
-                arcpy.Merge_management(point_start_end, "point_25_degree")
-                arcpy.management.SplitLineAtPoint('dissolve_stream', 'point_25_degree', "line_25_degree", "1 Meters")
-                query_line_25 = '"OBJECTID" = 2'
-                arcpy.MakeFeatureLayer_management('line_25_degree', "line_to_wsh", query_line_25)
+                arcpy.management.SplitLineAtPoint('dissolve_stream', 'point_25_degree_start', "line_25_degree", "1 Meters")
+                
+                with arcpy.da.SearchCursor('dissolve_stream', 'SHAPE@') as cur:
+                    for row in cur:
+                        coords_start = tuple((row[0].firstPoint.X, row[0].firstPoint.Y))
+                        break
+                objval_2 = 0
+                with arcpy.da.SearchCursor('line_25_degree', ['SHAPE@', 'OID@']) as cur_1:
+                    for row in cur_1:
+                        split_start = tuple((row[0].firstPoint.X, row[0].firstPoint.Y))
+                        if (coords_start != split_start):
+                            objval_2 = row[1]
+                            break
+                query_line_25_before = '"OBJECTID" = {0}'.format(objval_2)
+                arcpy.MakeFeatureLayer_management('line_25_degree', "line_to_wsh", query_line_25_before)
+
+
+
+                
+
+
+
             else:
-                arcpy.management.SplitLineAtPoint('dissolve_stream', 'point_25_degree_end', "line_25_degree", "1 Meters")
+
                 arcpy.management.AddGeometryAttributes('start_point', "POINT_X_Y_Z_M","METERS")
                 arcpy.management.PolygonToLine(watershed_output, "watershed_output_line")
                 arcpy.MakeFeatureLayer_management('watershed_output_line', "watershed_output_line_fl")
@@ -811,8 +850,7 @@ class Reconstruction_of_watershades(object):
                 merge_watershed_zone_line = ['point_start_wsh_line', 'dissolve_stream']
                 arcpy.Merge_management(merge_watershed_zone_line, "line_to_wsh_2")
                 arcpy.Dissolve_management('line_to_wsh_2', "line_to_wsh","", "", "SINGLE_PART", "DISSOLVE_LINES")
-        if len_start_25 != 0:
-            arcpy.management.SplitLineAtPoint('dissolve_stream', 'point_25_degree_end', "line_to_wsh", "1 Meters")
+
 
         arcpy.AddMessage('5. Point end tranzit zone ok')
 
@@ -901,8 +939,14 @@ class Reconstruction_of_watershades(object):
         arcpy.MakeFeatureLayer_management('zone_polygon_all_fl_single_fl', "tranzit_zone_polygon_no_20_2")
         tranzit_zone_list =['tranzit_zone_polygon_20', 'tranzit_zone_polygon_no_20_2']
         arcpy.Merge_management(tranzit_zone_list, "tranzit_zone_list_2")
-        tranzit_zone_polygon = arcpy.MakeFeatureLayer_management('tranzit_zone_list_2', tranzit_zone_polygon)
+        arcpy.MakeFeatureLayer_management('tranzit_zone_list_2', "tranzit_zone_polygon_fl")
+        arcpy.Dissolve_management('tranzit_zone_list_2', "tranz_diss")
+        tranzit_zone_polygon = arcpy.MakeFeatureLayer_management('tranz_diss', tranzit_zone_polygon)
         arcpy.AddMessage('6. Tranzit zone polygon ok')
+
+
+
+
 
 # ВЫДЕЛЕНИЕ ОТДЕЛЬНЫХ ЛИНИЙ
         arcpy.MakeFeatureLayer_management('point_25_degree_end', "25_degree")
@@ -939,11 +983,10 @@ class Reconstruction_of_watershades(object):
         len_path_comp_count = len([i[0] for i in arcpy.da.SearchCursor('avalanche_path_component', "OBJECTID")])
         arcpy.AddMessage('7. Line start and tranzit zone ok')
 
-        help_1 = arcpy.MakeFeatureLayer_management('avalanche_path_component', help_1)
+
  
 # ПРОДЛЯЕМ ЛИНИЮ 3ОНЫ ВЫХОДА, ЕСЛИ ОНА БОЛЬШЕ ТРИДЦАТИ ГРАДУСОВ
         if len_path_comp_count == 4:
-            arcpy.AddMessage('if')
             arcpy.FeatureVerticesToPoints_management(start_track, "start_end_point_tranzit", "BOTH_ENDS")
             arcpy.management.AddGeometryAttributes('start_end_point_tranzit', "POINT_X_Y_Z_M","METERS")
             arcpy.FeatureVerticesToPoints_management('runout_zone_before_30', "start_end_point_runout", "BOTH_ENDS")
@@ -1041,7 +1084,6 @@ class Reconstruction_of_watershades(object):
             arcpy.management.AddGeometryAttributes('start_end_point_tranzit', "POINT_X_Y_Z_M","METERS")
             px_t = [k[0] for k in arcpy.da.SearchCursor('start_end_point_tranzit', "POINT_X")]
             py_t = [k[0] for k in arcpy.da.SearchCursor('start_end_point_tranzit', "POINT_Y")]
-            arcpy.AddMessage('else')
             arcpy.MakeFeatureLayer_management('runout_zone_before_30', "runout_track_no_end")
             arcpy.AddMessage('8. Runout line ok_2')
 
@@ -1117,9 +1159,28 @@ class Reconstruction_of_watershades(object):
                 tan_psi_i = razn_z_start_end_aval/len_path
                 angle_psi.append(tan_psi_i)
             cnt += 1
+        point_qery_list = [angle_psi.index(i) for i in angle_psi]
         point_end_aval = [angle_psi.index(i) for i in angle_psi if i <= tan_psi_threshold][1]
         point_end_aval_query = '"OBJECTID" = {0}'.format(point_end_aval)
-        arcpy.MakeFeatureLayer_management('runout_track_point_value', "point_avalance_end", point_end_aval_query)
+        arcpy.MakeFeatureLayer_management('runout_track_point_value', "point_avalance_end_1", point_end_aval_query)
+        arcpy.management.AddGeometryAttributes('point_avalance_end_1', "POINT_X_Y_Z_M","METERS")
+        px_roe = [k[0] for k in arcpy.da.SearchCursor('point_avalance_end_1', "POINT_X")][0]
+        py_roe = [k[0] for k in arcpy.da.SearchCursor('point_avalance_end_1', "POINT_Y")][0]
+        arcpy.AddMessage(px_roe)
+        arcpy.AddMessage(py_roe)
+
+        arcpy.FeatureVerticesToPoints_management(tranzit_track, "tranzit_track_end_point", "BOTH_ENDS")
+        arcpy.management.AddGeometryAttributes('tranzit_track_end_point', "POINT_X_Y_Z_M","METERS")
+        px_tre = [k[0] for k in arcpy.da.SearchCursor('tranzit_track_end_point', "POINT_X")][-1]
+        py_tre = [k[0] for k in arcpy.da.SearchCursor('tranzit_track_end_point', "POINT_Y")][-1]
+
+        if px_roe == px_tre and py_roe == py_tre:
+            point_end_aval_query_1 = '"OBJECTID" = {0}'.format(point_qery_list[2])
+            arcpy.MakeFeatureLayer_management('runout_track_point_value', "point_avalance_end", point_end_aval_query_1)
+        else:
+            point_end_aval_query = '"OBJECTID" = {0}'.format(point_end_aval)
+            arcpy.MakeFeatureLayer_management('runout_track_point_value', "point_avalance_end", point_end_aval_query)
+
         arcpy.AddMessage('12. Point avalance end ok')
 
 
@@ -1141,12 +1202,11 @@ class Reconstruction_of_watershades(object):
         runout_track = arcpy.MakeFeatureLayer_management('runout_track_no_end_i', runout_track, query_line_2)
         arcpy.AddMessage('13. Runout line ok')
 
-        
-        help_2 = arcpy.MakeFeatureLayer_management(runout_track, help_2)
+
 
 
 # ПОИСК ПОЛИГОНА ЗОНЫ ОСАЖДЕНИЯ
-        arcpy.analysis.Intersect([watershed_output, tranzit_zone_polygon] , "inter_wsh_and_tranz", "", "", "LINE")
+        arcpy.analysis.Intersect([watershed_output, 'tranzit_zone_polygon_fl'] , "inter_wsh_and_tranz", "", "", "LINE")
         inter_line_count = len([k[0] for k in arcpy.da.SearchCursor('inter_wsh_and_tranz', "OBJECTID")])
         if inter_line_count == 1:
             arcpy.MakeFeatureLayer_management('inter_wsh_and_tranz','inter_wsh_and_tranz_fl')
@@ -1173,7 +1233,7 @@ class Reconstruction_of_watershades(object):
         arcpy.Merge_management(line_list_runout, "runout_line")
         arcpy.management.FeatureToPolygon('runout_line', "runout_zone_polygon")
 
-        arcpy.analysis.SymDiff('runout_zone_polygon', tranzit_zone_polygon, "runout_polygon_all")
+        arcpy.analysis.SymDiff('runout_zone_polygon', 'tranzit_zone_list_2', "runout_polygon_all")
         arcpy.management.MultipartToSinglepart('runout_polygon_all', "runout_polygon_all_sing")
         arcpy.MakeFeatureLayer_management('runout_polygon_all_sing',"runout_polygon_all_sing_fl")
         arcpy.management.SelectLayerByLocation('runout_polygon_all_sing_fl', "INTERSECT", 'point_avalance_end')
@@ -1193,7 +1253,11 @@ class Reconstruction_of_watershades(object):
         L = len_runout + len_tranzit + len_start
         lb_25 = len_start
         Z_25 = Hb_25 - (H/L)*lb_25
-        v_25 = math.sqrt(2*9.8*Z_25)
+        if Z_25 < 0:
+            z_25 = 0
+        else:
+            z_25 = Z_25
+        v_25 = math.sqrt(2*9.8*z_25)
 
 
 #ПОИСК ЗНАЧЕНИЯ СКОРОСТИ ЛАВИНЫ ДЛЯ ТОЧКИ В КОНЦЕ ЗОНЫ ТРАНЗИТА
@@ -1201,7 +1265,11 @@ class Reconstruction_of_watershades(object):
         Hb_20 = z_start_point - z_20_point
         lb_20 = len_start + len_tranzit
         Z_20 = Hb_20 - (H/L)*lb_20
-        v_20 = math.sqrt(2*9.8*Z_20)
+        if Z_20 < 0:
+            z_20 = 0
+        else:
+            z_20 = Z_20
+        v_20 = math.sqrt(2*9.8*z_20)
 
 
 # ПОДГОТОВКА ДАННЫХ ДЛЯ ЗАПИСИ В ТЕКСТОРВЫЙ ФАЙЛ
@@ -1344,6 +1412,6 @@ class Reconstruction_of_watershades(object):
 
 
 
-        # Добавить удаление всех промежуточных слоев, сохранение промежуточных водораздела и пути не во временные?. Добавить месседжы, исправить названия в окне ввода.
-        # благовещенский определение лавинных нагрузок 62-63
+#         # Добавить удаление всех промежуточных слоев, сохранение промежуточных водораздела и пути не во временные?. Добавить месседжы, исправить названия в окне ввода.
+#         # благовещенский определение лавинных нагрузок 62-63
             
